@@ -1,0 +1,3 @@
+[workspace]
+members = ["tyzen", "tyzen-macro", "tyzen-tauri"]
+resolver = "2"

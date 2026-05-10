@@ -1,0 +1,25 @@
+[package]
+name = "tyzen"
+version = "0.1.7"
+description = "A lightweight tool to generate TypeScript type definitions from Rust structs and enums."
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/EnsomeReiser/todo-list"
+homepage = "https://github.com/EnsomeReiser/todo-list"
+readme = "../README.md"
+
+[features]
+default = []
+serde_json = ["dep:serde_json"]
+uuid = ["dep:uuid"]
+chrono = ["dep:chrono"]
+
+[dependencies]
+inventory = "0.3.24"
+tyzen-macro = { version = "0.1.7", path = "../tyzen-macro" }
+serde_json = { version = "1", optional = true }
+uuid = { version = "1", optional = true }
+chrono = { version = "0.4", optional = true }
+
+[dev-dependencies]
+trybuild = "1"

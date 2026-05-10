@@ -1,0 +1,6 @@
+error: #[tyzen(optional)] can only be used on Option<T> fields
+ --> tests/ui/optional_non_option.rs:5:5
+  |
+5 | /     #[tyzen(optional)]
+6 | |     count: u32,
+  | |______________^

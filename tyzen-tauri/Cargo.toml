@@ -1,0 +1,15 @@
+[package]
+name = "tyzen-tauri"
+version = "0.1.7"
+description = "Tauri integration for tyzen that automatically collects and registers all Tauri commands with a single macro."
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/EnsomeReiser/todo-list"
+homepage = "https://github.com/EnsomeReiser/todo-list"
+readme = "../README.md"
+
+[dependencies]
+tyzen = { version = "0.1.7", path = "../tyzen" }
+tyzen-macro = { version = "0.1.7", path = "../tyzen-macro" }
+inventory = "0.3.24"
+tauri = "^2"
