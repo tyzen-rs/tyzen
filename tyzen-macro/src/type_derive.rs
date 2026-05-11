@@ -384,11 +384,36 @@ fn named_field_definition(
 }
 
 fn ts_type_name(ty: &syn::Type, generic_params: &[String]) -> proc_macro2::TokenStream {
+    if let Some(inner) = channel_inner_type(ty) {
+        let inner_ts = ts_type_name(inner, generic_params);
+        return quote! { format!("Channel<{}>", #inner_ts) };
+    }
+
     if let Some(name) = get_generic_aware_name(ty, generic_params) {
         quote! { #name }
     } else {
         quote! { <#ty as ::tyzen::TsType>::ts_name() }
     }
+}
+
+fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
+    let syn::Type::Path(type_path) = ty else {
+        return None;
+    };
+
+    let segment = type_path.path.segments.last()?;
+    if segment.ident != "Channel" {
+        return None;
+    }
+
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return None;
+    };
+
+    args.args.iter().find_map(|arg| match arg {
+        syn::GenericArgument::Type(inner) => Some(inner),
+        _ => None,
+    })
 }
 
 fn get_generic_aware_name(

@@ -36,7 +36,7 @@ fn expand_command(item: TokenStream, emit_tauri: bool) -> TokenStream {
         .map(|(pat, ty)| {
             let name = quote!(#pat).to_string();
             if let Some(inner) = channel_inner_type(ty) {
-                quote! { ::tyzen::ParamMeta { name: #name, ty: || format!("Channel<{}>", <#inner as ::tyzen::TsType>::ts_name()) } }
+                quote! { ::tyzen::ParamMeta { name: #name, ty: || format!("__TYZEN_CHANNEL__<{}>", <#inner as ::tyzen::TsType>::ts_name()) } }
             } else {
                 quote! { ::tyzen::ParamMeta { name: #name, ty: <#ty as ::tyzen::TsType>::ts_name } }
             }
@@ -72,7 +72,13 @@ fn command_param(arg: &FnArg) -> Option<(&syn::Pat, &syn::Type)> {
 
 fn is_framework_param(ty: &syn::Type) -> bool {
     let ty_str = quote!(#ty).to_string().replace(' ', "");
-    ty_str.contains("State") || ty_str.contains("AppHandle") || ty_str.contains("Window")
+    ty_str.contains("State")
+        || ty_str.contains("AppHandle")
+        || ty_str.contains("Window")
+        || ty_str.contains("Webview")
+        || ty_str.contains("EventLoopProxy")
+        || ty_str.contains("Runtime")
+        || ty_str.contains("Scope")
 }
 
 fn return_type_fn(output: &ReturnType) -> proc_macro2::TokenStream {
@@ -108,6 +114,7 @@ fn tauri_handler_submission(
         }
     }
 }
+
 fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     let syn::Type::Path(type_path) = ty else {
         return None;
