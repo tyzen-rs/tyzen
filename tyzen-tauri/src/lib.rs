@@ -25,9 +25,31 @@ pub fn write_tauri_commands(ts: &mut String) {
         let params_ts: Vec<String> = cmd
             .params
             .iter()
-            .map(|p| format!("{}: {}", p.name, (p.ty)()))
+            .map(|p| {
+                let ty = (p.ty)();
+                let param_name = snake_to_camel(p.name);
+                if ty.starts_with("__TYZEN_CHANNEL__<") {
+                    let inner = &ty["__TYZEN_CHANNEL__<".len()..ty.len() - 1];
+                    format!("{}: (payload: {}) => void", param_name, inner)
+                } else {
+                    format!("{}: {}", param_name, ty)
+                }
+            })
             .collect();
-        let param_names: Vec<&str> = cmd.params.iter().map(|p| p.name).collect();
+
+        let invoke_args: Vec<String> = cmd
+            .params
+            .iter()
+            .map(|p| {
+                let ty = (p.ty)();
+                let param_name = snake_to_camel(p.name);
+                if ty.starts_with("__TYZEN_CHANNEL__<") {
+                    format!("{}: new Channel({})", param_name, param_name)
+                } else {
+                    param_name
+                }
+            })
+            .collect();
 
         let raw_return_type = (cmd.return_type)();
         let ts_return_type = if raw_return_type.starts_with("Result<") {
@@ -42,7 +64,7 @@ pub fn write_tauri_commands(ts: &mut String) {
             params_ts.join(", "),
             ts_return_type,
             cmd.name,
-            param_names.join(", "),
+            invoke_args.join(", "),
         ));
     }
     ts.push_str("}\n");
