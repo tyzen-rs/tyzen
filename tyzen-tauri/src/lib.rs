@@ -16,16 +16,18 @@ pub fn generate(output_path: &str) {
 
 pub fn write_tauri_commands(ts: &mut String) {
     ts.push_str("import { invoke, Channel } from \"@tauri-apps/api/core\"\n");
-    ts.push_str("import { listen, once, emit, type EventCallback } from \"@tauri-apps/api/event\"\n\n");
+    ts.push_str(
+        "import { listen, once, emit, type EventCallback } from \"@tauri-apps/api/event\"\n\n",
+    );
     ts.push_str("export const commands = {\n");
     for cmd in inventory::iter::<CommandMeta> {
         let fn_name = snake_to_camel(cmd.name);
         let params_ts: Vec<String> = cmd
             .params
             .iter()
-            .map(|(name, ty_fn)| format!("{}: {}", name, ty_fn()))
+            .map(|p| format!("{}: {}", p.name, (p.ty)()))
             .collect();
-        let param_names: Vec<&str> = cmd.params.iter().map(|(name, _)| *name).collect();
+        let param_names: Vec<&str> = cmd.params.iter().map(|p| p.name).collect();
 
         let raw_return_type = (cmd.return_type)();
         let ts_return_type = if raw_return_type.starts_with("Result<") {
@@ -69,8 +71,12 @@ pub fn write_tauri_events(ts: &mut String) {
     ts.push_str("    get: (_, prop: string) => {\n");
     ts.push_str("      const name = mappings[prop];\n");
     ts.push_str("      return {\n");
-    ts.push_str("        listen: (cb: (payload: any) => void) => listen(name, (e) => cb(e.payload)),\n");
-    ts.push_str("        once: (cb: (payload: any) => void) => once(name, (e) => cb(e.payload)),\n");
+    ts.push_str(
+        "        listen: (cb: (payload: any) => void) => listen(name, (e) => cb(e.payload)),\n",
+    );
+    ts.push_str(
+        "        once: (cb: (payload: any) => void) => once(name, (e) => cb(e.payload)),\n",
+    );
     ts.push_str("        emit: (payload: any) => emit(name, payload),\n");
     ts.push_str("      }\n");
     ts.push_str("    }\n");

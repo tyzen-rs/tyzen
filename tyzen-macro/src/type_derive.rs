@@ -39,11 +39,15 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
     let generics = &input.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let mut where_clause = where_clause.cloned().unwrap_or_else(|| syn::parse_quote!(where));
+    let mut where_clause = where_clause
+        .cloned()
+        .unwrap_or_else(|| syn::parse_quote!(where));
     for param in &generics.params {
         if let syn::GenericParam::Type(type_param) = param {
             let ident = &type_param.ident;
-            where_clause.predicates.push(syn::parse_quote!(#ident: ::tyzen::TsType));
+            where_clause
+                .predicates
+                .push(syn::parse_quote!(#ident: ::tyzen::TsType));
         }
     }
 
@@ -122,13 +126,18 @@ fn ts_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
     let name = input.ident.to_string();
     let serde = serde_attrs(&input.attrs);
 
-    let generic_params: Vec<String> = input.generics.params.iter().filter_map(|p| {
-        if let syn::GenericParam::Type(t) = p {
-            Some(t.ident.to_string())
-        } else {
-            None
-        }
-    }).collect();
+    let generic_params: Vec<String> = input
+        .generics
+        .params
+        .iter()
+        .filter_map(|p| {
+            if let syn::GenericParam::Type(t) = p {
+                Some(t.ident.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
 
     let generic_suffix = if generic_params.is_empty() {
         "".to_string()
@@ -137,8 +146,20 @@ fn ts_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
     };
 
     match &input.data {
-        Data::Struct(data) => struct_definition(&name, &generic_suffix, &data.fields, serde.rename_all, &generic_params),
-        Data::Enum(data) => enum_definition(&name, &generic_suffix, &data.variants, &serde, &generic_params),
+        Data::Struct(data) => struct_definition(
+            &name,
+            &generic_suffix,
+            &data.fields,
+            serde.rename_all,
+            &generic_params,
+        ),
+        Data::Enum(data) => enum_definition(
+            &name,
+            &generic_suffix,
+            &data.variants,
+            &serde,
+            &generic_params,
+        ),
         _ => quote! { || format!("export type {}{} = unknown", #name, #generic_suffix) },
     }
 }
@@ -205,11 +226,7 @@ fn enum_definition(
             .iter()
             .map(|v| {
                 let variant_serde = serde_attrs(&v.attrs);
-                ts_name(
-                    &v.ident.to_string(),
-                    variant_serde.rename,
-                    serde.rename_all,
-                )
+                ts_name(&v.ident.to_string(), variant_serde.rename, serde.rename_all)
             })
             .collect::<Vec<_>>();
 
@@ -333,31 +350,36 @@ fn ts_type_name(ty: &syn::Type, generic_params: &[String]) -> proc_macro2::Token
     }
 }
 
-fn get_generic_aware_name(ty: &syn::Type, generic_params: &[String]) -> Option<proc_macro2::TokenStream> {
+fn get_generic_aware_name(
+    ty: &syn::Type,
+    generic_params: &[String],
+) -> Option<proc_macro2::TokenStream> {
     match ty {
         syn::Type::Path(p) => {
             let segment = p.path.segments.last()?;
             let ident_str = segment.ident.to_string();
 
-            // Direct generic parameter: T -> "T"
             if generic_params.contains(&ident_str) {
                 return Some(quote! { #ident_str.to_string() });
             }
 
-            // Composite types: Vec<T>, Option<T>, Result<T, E>
             if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                 let mut has_generic = false;
-                let inner_names = args.args.iter().filter_map(|arg| {
-                    if let syn::GenericArgument::Type(inner_ty) = arg {
-                        if is_generic(inner_ty, generic_params) {
-                            has_generic = true;
-                            return Some(ts_type_name(inner_ty, generic_params));
+                let inner_names = args
+                    .args
+                    .iter()
+                    .filter_map(|arg| {
+                        if let syn::GenericArgument::Type(inner_ty) = arg {
+                            if is_generic(inner_ty, generic_params) {
+                                has_generic = true;
+                                return Some(ts_type_name(inner_ty, generic_params));
+                            }
+                            Some(quote! { <#inner_ty as ::tyzen::TsType>::ts_name() })
+                        } else {
+                            None
                         }
-                        Some(quote! { <#inner_ty as ::tyzen::TsType>::ts_name() })
-                    } else {
-                        None
-                    }
-                }).collect::<Vec<_>>();
+                    })
+                    .collect::<Vec<_>>();
 
                 if !has_generic || inner_names.is_empty() {
                     return None;
@@ -377,10 +399,9 @@ fn get_generic_aware_name(ty: &syn::Type, generic_params: &[String]) -> Option<p
                         let err = &inner_names[1];
                         Some(quote! { format!("Result<{}, {}>", #ok, #err) })
                     }
-                    _ => {
-                        // For other types like MyStruct<T>, we hope they are also generic in TS
-                        Some(quote! { format!("{}<{}>", #ident_str, vec![#(#inner_names),*].join(", ")) })
-                    }
+                    _ => Some(
+                        quote! { format!("{}<{}>", #ident_str, vec![#(#inner_names),*].join(", ")) },
+                    ),
                 };
             }
             None
@@ -392,10 +413,10 @@ fn get_generic_aware_name(ty: &syn::Type, generic_params: &[String]) -> Option<p
 fn is_generic(ty: &syn::Type, generic_params: &[String]) -> bool {
     match ty {
         syn::Type::Path(p) => {
-            if let Some(ident) = p.path.get_ident() {
-                if generic_params.contains(&ident.to_string()) {
-                    return true;
-                }
+            if let Some(ident) = p.path.get_ident()
+                && generic_params.contains(&ident.to_string())
+            {
+                return true;
             }
             p.path.segments.iter().any(|s| {
                 if let syn::PathArguments::AngleBracketed(args) = &s.arguments {

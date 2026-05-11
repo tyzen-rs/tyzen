@@ -1,6 +1,26 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Expr, Lit, parse_macro_input};
+use syn::{DeriveInput, Expr, Lit, LitStr, parse_macro_input};
+
+pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let mut input = parse_macro_input!(item as DeriveInput);
+    let event_name = parse_macro_input!(attr as LitStr);
+
+    input
+        .attrs
+        .push(syn::parse_quote! { #[tyzen(name = #event_name)] });
+    input
+        .attrs
+        .push(syn::parse_quote! { #[derive(::tyzen::Event)] });
+    input
+        .attrs
+        .push(syn::parse_quote! { #[event(#event_name)] });
+
+    quote! {
+        #input
+    }
+    .into()
+}
 
 pub fn derive_event(item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
@@ -13,10 +33,10 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
                 if meta.path.is_ident("name") {
                     let value = meta.value()?;
                     let expr: Expr = value.parse()?;
-                    if let Expr::Lit(expr_lit) = expr {
-                        if let Lit::Str(lit_str) = expr_lit.lit {
-                            custom_name = Some(lit_str.value());
-                        }
+                    if let Expr::Lit(expr_lit) = expr
+                        && let Lit::Str(lit_str) = expr_lit.lit
+                    {
+                        custom_name = Some(lit_str.value());
                     }
                 }
                 Ok(())

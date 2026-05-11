@@ -1,16 +1,23 @@
 #[doc(hidden)]
 pub use inventory;
-pub use tyzen_macro::{Event, Type, command};
+pub use tyzen_macro::{Event, Type, command, event};
 pub mod utils;
 
 use crate::utils::snake_to_camel;
 
 pub mod ts_type;
 
+type TypeFactory = fn() -> String;
+
+pub struct ParamMeta {
+    pub name: &'static str,
+    pub ty: TypeFactory,
+}
+
 pub struct CommandMeta {
     pub name: &'static str,
-    pub params: &'static [(&'static str, fn() -> String)],
-    pub return_type: fn() -> String,
+    pub params: &'static [ParamMeta],
+    pub return_type: TypeFactory,
 }
 
 pub struct TypeMeta {
@@ -58,10 +65,10 @@ pub fn generate_full(
     ts.push_str("\n/** autogen types **/\n");
     for t in inventory::iter::<TypeMeta> {
         ts.push_str(&(t.ts_def)());
-        ts.push_str("\n");
+        ts.push('\n');
     }
 
-    ts.push_str("\n");
+    ts.push('\n');
     ts.push_str("export type Result<T, E> = { status: \"ok\"; data: T } | { status: \"error\"; error: E }\n");
 
     write_after_types(&mut ts);
@@ -88,7 +95,7 @@ pub fn write_command_declarations(ts: &mut String) {
         let params_ts: Vec<String> = cmd
             .params
             .iter()
-            .map(|(name, ty_fn)| format!("{}: {}", name, ty_fn()))
+            .map(|p| format!("{}: {}", p.name, (p.ty)()))
             .collect();
 
         ts.push_str(&format!(

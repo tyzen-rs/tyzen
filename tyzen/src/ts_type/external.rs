@@ -14,7 +14,7 @@ impl crate::TsType for uuid::Uuid {
 
 #[cfg(feature = "chrono")]
 mod chrono_impls {
-    use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc, Local};
+    use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
     impl crate::TsType for Utc {
         fn ts_name() -> String {

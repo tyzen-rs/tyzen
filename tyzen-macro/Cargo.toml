@@ -4,8 +4,8 @@ version = "0.1.7"
 description = "Procedural macros for the tyzen crate."
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/EnsomeReiser/todo-list"
-homepage = "https://github.com/EnsomeReiser/todo-list"
+repository = "https://github.com/tyzen-rs/tyzen"
+homepage = "https://github.com/tyzen-rs/tyzen"
 readme = "../README.md"
 
 [lib]

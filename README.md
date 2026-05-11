@@ -17,12 +17,15 @@ While Tyzen was built with **Tauri** in mind, its core is a generic, lightning-f
 
 ### 1. Add Dependencies
 
-Run the following commands in your project directory:
-
+For core type generation:
 ```bash
 cargo add tyzen
-cargo add tyzen-tauri  # Optional: for Tauri specialized features
 cargo add serde --features derive
+```
+
+For **Tauri** integration (Optional):
+```bash
+cargo add tyzen-tauri
 ```
 
 ### 2. Define Your Types (Rust)
@@ -44,8 +47,27 @@ pub struct User {
 pub struct WelcomeEvent {
     pub message: String,
 }
+```
 
-// 3. Define a Tauri Command
+### 3. Setup the Generator
+
+In your `main.rs` (or any build/tool script), initialize the generator:
+
+```rust
+fn main() {
+    tyzen::generate("../src/bindings.ts");
+}
+```
+
+---
+
+## 🔌 Tauri Integration
+
+For Tauri projects, `tyzen-tauri` provides a wrapper that automates command registration and event handling.
+
+### 1. Define Tauri Commands
+
+```rust
 #[tauri::command]
 #[tyzen_tauri::command] // Marks for TS generation & auto-registration
 pub fn create_user(name: String) -> Result<User, String> {
@@ -53,14 +75,12 @@ pub fn create_user(name: String) -> Result<User, String> {
 }
 ```
 
-### 3. Setup the Generator & Handler
-
-In your `main.rs`, initialize the generator and use the `handler!` macro to register all commands automatically.
+### 2. Setup Generator & Handler
 
 ```rust
 fn main() {
-    // 1. Generate TS bindings (Run this in debug mode)
-    #[cfg(debug_assertions)]
+    // 1. Generate TS bindings with Tauri support
+    #[cfg(debug_assertions)]  
     tyzen_tauri::generate("../src/bindings.ts"); 
 
     // 2. Setup Tauri with auto-registration
@@ -86,7 +106,7 @@ function App() {
 
   useEffect(() => {
     // 1. Call a command (Type-safe Promise)
-    commands.createUser("Silverian").then(res => {
+    commands.createUser("rzust").then(res => {
        if (res.status === 'ok') console.log("Success:", res.data);
     });
 

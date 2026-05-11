@@ -62,7 +62,7 @@ fn expand_command(item: TokenStream, emit_tauri: bool) -> TokenStream {
     .into()
 }
 
-fn command_param(arg: &FnArg) -> Option<(&Box<syn::Pat>, &Box<syn::Type>)> {
+fn command_param(arg: &FnArg) -> Option<(&syn::Pat, &syn::Type)> {
     match arg {
         FnArg::Typed(PatType { pat, ty, .. }) if is_framework_param(ty) => None,
         FnArg::Typed(PatType { pat, ty, .. }) => Some((pat, ty)),
