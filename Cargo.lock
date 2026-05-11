@@ -3645,7 +3645,7 @@ checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
 name = "tyzen"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "chrono",
  "inventory",
@@ -3657,7 +3657,7 @@ dependencies = [
 
 [[package]]
 name = "tyzen-macro"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "proc-macro-error2",
  "proc-macro2",
@@ -3667,7 +3667,7 @@ dependencies = [
 
 [[package]]
 name = "tyzen-tauri"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "inventory",
  "tauri",
