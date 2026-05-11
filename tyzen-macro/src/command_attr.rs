@@ -36,9 +36,9 @@ fn expand_command(item: TokenStream, emit_tauri: bool) -> TokenStream {
         .map(|(pat, ty)| {
             let name = quote!(#pat).to_string();
             if let Some(inner) = channel_inner_type(ty) {
-                quote! { (#name, || format!("Channel<{}>", <#inner as ::tyzen::TsType>::ts_name())) }
+                quote! { ::tyzen::ParamMeta { name: #name, ty: || format!("Channel<{}>", <#inner as ::tyzen::TsType>::ts_name()) } }
             } else {
-                quote! { (#name, <#ty as ::tyzen::TsType>::ts_name) }
+                quote! { ::tyzen::ParamMeta { name: #name, ty: <#ty as ::tyzen::TsType>::ts_name } }
             }
         })
         .collect();

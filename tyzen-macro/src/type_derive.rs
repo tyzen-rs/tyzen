@@ -22,6 +22,10 @@ struct SerdeAttrs {
     rename: Option<String>,
     rename_all: Option<RenameRule>,
     rename_all_fields: Option<RenameRule>,
+    tag: Option<String>,
+    content: Option<String>,
+    untagged: bool,
+    transparent: bool,
     skip: bool,
 }
 
@@ -150,7 +154,7 @@ fn ts_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
             &name,
             &generic_suffix,
             &data.fields,
-            serde.rename_all,
+            &serde,
             &generic_params,
         ),
         Data::Enum(data) => enum_definition(
@@ -168,15 +172,23 @@ fn struct_definition(
     name: &str,
     generic_suffix: &str,
     fields: &Fields,
-    rename_all: Option<RenameRule>,
+    serde: &SerdeAttrs,
     generic_params: &[String],
 ) -> proc_macro2::TokenStream {
+    if serde.transparent {
+        let field = fields.iter().next().expect("transparent struct must have one field");
+        let ty = ts_type_name(&field.ty, generic_params);
+        return quote! {
+            || format!("export type {}{} = {}", #name, #generic_suffix, #ty)
+        };
+    }
+
     match fields {
         Fields::Named(fields) => {
             let fields = fields
                 .named
                 .iter()
-                .filter_map(|field| named_field_definition(field, rename_all, generic_params))
+                .filter_map(|field| named_field_definition(field, serde.rename_all, generic_params))
                 .collect::<Vec<_>>();
 
             quote! {
@@ -219,7 +231,7 @@ fn enum_definition(
     serde: &SerdeAttrs,
     generic_params: &[String],
 ) -> proc_macro2::TokenStream {
-    let is_unit_enum = variants.iter().all(|v| matches!(v.fields, Fields::Unit));
+    let is_unit_enum = !serde.untagged && variants.iter().all(|v| matches!(v.fields, Fields::Unit));
 
     if is_unit_enum {
         let variant_names = variants
@@ -273,11 +285,19 @@ fn enum_variant_definition(
     let field_rename_all = variant_serde
         .rename_all
         .or(container_serde.rename_all_fields);
+    let tag_name = container_serde.tag.as_deref().unwrap_or("tag");
+    let content_name = container_serde.content.as_deref();
 
     Some(match &variant.fields {
-        Fields::Unit => quote! {
-            format!("\"{}\"", #variant_name)
-        },
+        Fields::Unit => {
+            if container_serde.untagged {
+                quote! { "null".to_string() }
+            } else {
+                quote! {
+                    format!("{{ {}: \"{}\" }}", #tag_name, #variant_name)
+                }
+            }
+        }
         Fields::Unnamed(fields) => {
             let values = fields
                 .unnamed
@@ -285,16 +305,26 @@ fn enum_variant_definition(
                 .map(|field| ts_type_name(&field.ty, generic_params))
                 .collect::<Vec<_>>();
 
-            if values.len() == 1 {
-                quote! {
-                    format!("{{ tag: \"{}\", value: {} }}", #variant_name, #(#values),*)
-                }
+            let values_ts = if values.len() == 1 {
+                quote! { #(#values),* }
             } else {
                 quote! {
                     {
                         let values = vec![#(#values),*];
-                        format!("{{ tag: \"{}\", value: [{}] }}", #variant_name, values.join(", "))
+                        format!("[{}]", values.join(", "))
                     }
+                }
+            };
+
+            if container_serde.untagged {
+                quote! { #values_ts }
+            } else if let Some(content) = content_name {
+                quote! {
+                    format!("{{ {}: \"{}\", {}: {} }}", #tag_name, #variant_name, #content, #values_ts)
+                }
+            } else {
+                quote! {
+                    format!("{{ {}: \"{}\", value: {} }}", #tag_name, #variant_name, #values_ts)
                 }
             }
         }
@@ -304,8 +334,19 @@ fn enum_variant_definition(
                 .iter()
                 .filter_map(|field| named_field_definition(field, field_rename_all, generic_params))
                 .collect::<Vec<_>>();
-            quote! {
-                format!("{{ tag: \"{}\", {} }}", #variant_name, vec![#(#fields),*].join(", "))
+
+            if container_serde.untagged {
+                quote! {
+                    format!("{{ {} }}", vec![#(#fields),*].join(", "))
+                }
+            } else if let Some(content) = content_name {
+                quote! {
+                    format!("{{ {}: \"{}\", {}: {{ {} }} }}", #tag_name, #variant_name, #content, vec![#(#fields),*].join(", "))
+                }
+            } else {
+                quote! {
+                    format!("{{ {}: \"{}\", {} }}", #tag_name, #variant_name, vec![#(#fields),*].join(", "))
+                }
             }
         }
     })
@@ -478,6 +519,28 @@ fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
             if meta.path.is_ident("rename_all_fields") {
                 let value = meta.value()?.parse::<syn::LitStr>()?;
                 serde.rename_all_fields = rename_rule(&value.value());
+                return Ok(());
+            }
+
+            if meta.path.is_ident("tag") {
+                let value = meta.value()?.parse::<syn::LitStr>()?;
+                serde.tag = Some(value.value());
+                return Ok(());
+            }
+
+            if meta.path.is_ident("content") {
+                let value = meta.value()?.parse::<syn::LitStr>()?;
+                serde.content = Some(value.value());
+                return Ok(());
+            }
+
+            if meta.path.is_ident("untagged") {
+                serde.untagged = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("transparent") {
+                serde.transparent = true;
                 return Ok(());
             }
 
