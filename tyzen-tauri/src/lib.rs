@@ -15,6 +15,12 @@ pub fn generate(output_path: &str) {
 }
 
 pub fn write_tauri_commands(ts: &mut String) {
+    let commands: Vec<_> = inventory::iter::<CommandMeta>().collect();
+    if commands.is_empty() {
+        return;
+    }
+
+    ts.push_str("/** autogen commands **/\n");
     ts.push_str("import { invoke, Channel } from \"@tauri-apps/api/core\"\n");
     ts.push_str(
         "import { listen, once, emit, type EventCallback } from \"@tauri-apps/api/event\"\n\n",
@@ -71,6 +77,11 @@ pub fn write_tauri_commands(ts: &mut String) {
 }
 
 pub fn write_tauri_events(ts: &mut String) {
+    let events: Vec<_> = inventory::iter::<EventMeta>().collect();
+    if events.is_empty() {
+        return;
+    }
+
     ts.push_str("\n/** autogen events **/\n");
     ts.push_str("export type Events = {\n");
     for event in inventory::iter::<EventMeta> {
