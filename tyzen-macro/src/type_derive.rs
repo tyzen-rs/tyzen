@@ -41,8 +41,21 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
 
     let name = &input.ident;
     let name_str = name.to_string();
+    let generic_params: Vec<String> = input
+        .generics
+        .params
+        .iter()
+        .filter_map(|p| {
+            if let syn::GenericParam::Type(t) = p {
+                Some(t.ident.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
     let ts_def = ts_definition(&input);
-    let structure = structure_definition(&input);
+    let structure = structure_definition(&input, &generic_params);
 
     let generics = &input.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -75,6 +88,12 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
         }
     };
 
+    let generic_params_str = if generic_params.is_empty() {
+        "".to_string()
+    } else {
+        format!("<{}>", generic_params.join(", "))
+    };
+
     quote! {
         impl #impl_generics ::tyzen::TsType for #name #ty_generics #where_clause {
             fn ts_name() -> String {
@@ -85,6 +104,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
         ::tyzen::inventory::submit! {
             ::tyzen::TypeMeta {
                 name: #name_str,
+                generic_params: #generic_params_str,
                 ts_def: #ts_def,
                 structure: #structure,
             }
@@ -468,10 +488,19 @@ fn get_generic_aware_name(
                         let inner = &inner_names[0];
                         Some(quote! { format!("{} | null", #inner) })
                     }
-                    "Result" if inner_names.len() == 2 => {
-                        let ok = &inner_names[0];
-                        let err = &inner_names[1];
-                        Some(quote! { format!("Result<{}, {}>", #ok, #err) })
+                    "Result" => {
+                        match inner_names.len() {
+                            1 => {
+                                let ok = &inner_names[0];
+                                Some(quote! { format!("Result<{}, string>", #ok) })
+                            }
+                            2 => {
+                                let ok = &inner_names[0];
+                                let err = &inner_names[1];
+                                Some(quote! { format!("Result<{}, {}>", #ok, #err) })
+                            }
+                            _ => None,
+                        }
                     }
                     _ => Some(
                         quote! { format!("{}<{}>", #ident_str, vec![#(#inner_names),*].join(", ")) },
@@ -600,7 +629,7 @@ fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
     serde
 }
 
-fn structure_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
+fn structure_definition(input: &DeriveInput, generic_params: &[String]) -> proc_macro2::TokenStream {
     let serde = serde_attrs(&input.attrs);
     match &input.data {
         Data::Struct(data) => {
@@ -610,14 +639,14 @@ fn structure_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
                     .iter()
                     .next()
                     .expect("transparent struct must have one field");
-                let ty = &field.ty;
+                let ty_name = ts_type_name(&field.ty, generic_params);
                 quote! {
-                    || ::tyzen::meta::TypeStructure::Transparent(<#ty as ::tyzen::TsType>::ts_name())
+                    || ::tyzen::meta::TypeStructure::Transparent(#ty_name)
                 }
             } else {
                 match &data.fields {
                     Fields::Named(_) => {
-                        let fields = struct_fields_meta(&data.fields, serde.rename_all);
+                        let fields = struct_fields_meta(&data.fields, serde.rename_all, generic_params);
                         quote! {
                             || ::tyzen::meta::TypeStructure::Struct(::tyzen::meta::StructMeta {
                                 fields: &[#(#fields),*]
@@ -626,8 +655,8 @@ fn structure_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
                     }
                     Fields::Unnamed(f) => {
                         let types = f.unnamed.iter().map(|field| {
-                            let ty = &field.ty;
-                            quote! { || <#ty as ::tyzen::TsType>::ts_name() }
+                            let ty_name = ts_type_name(&field.ty, generic_params);
+                            quote! { || #ty_name }
                         });
                         quote! {
                             || ::tyzen::meta::TypeStructure::Tuple(&[#(#types),*])
@@ -640,7 +669,7 @@ fn structure_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
             }
         }
         Data::Enum(data) => {
-            let variants = enum_variants_meta(&data.variants, &serde);
+            let variants = enum_variants_meta(&data.variants, &serde, generic_params);
             let tag = serde.tag.as_deref();
             let tag_quote = match tag {
                 Some(t) => quote! { Some(#t) },
@@ -668,14 +697,15 @@ fn structure_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
 fn struct_fields_meta(
     fields: &Fields,
     rename_all: Option<RenameRule>,
+    generic_params: &[String],
 ) -> Vec<proc_macro2::TokenStream> {
     fields
         .iter()
-        .filter_map(|field| field_meta(field, rename_all))
+        .filter_map(|field| field_meta(field, rename_all, generic_params))
         .collect()
 }
 
-fn field_meta(field: &Field, rename_all: Option<RenameRule>) -> Option<proc_macro2::TokenStream> {
+fn field_meta(field: &Field, rename_all: Option<RenameRule>, generic_params: &[String]) -> Option<proc_macro2::TokenStream> {
     let serde = serde_attrs(&field.attrs);
     if serde.skip {
         return None;
@@ -703,10 +733,12 @@ fn field_meta(field: &Field, rename_all: Option<RenameRule>) -> Option<proc_macr
         quote! { None }
     };
 
+    let ty_name = ts_type_name(ty, generic_params);
+
     Some(quote! {
         ::tyzen::meta::FieldMeta {
             name: #renamed_name,
-            ty_name: || <#ty as ::tyzen::TsType>::ts_name(),
+            ty_name: || #ty_name,
             optional: #optional,
             flattened: #flattened,
             flatten_base_name: #flatten_base_name,
@@ -717,6 +749,7 @@ fn field_meta(field: &Field, rename_all: Option<RenameRule>) -> Option<proc_macr
 fn enum_variants_meta(
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
     container_serde: &SerdeAttrs,
+    generic_params: &[String],
 ) -> Vec<proc_macro2::TokenStream> {
     variants
         .iter()
@@ -736,14 +769,14 @@ fn enum_variants_meta(
                 Fields::Unit => quote! { ::tyzen::meta::VariantFields::Unit },
                 Fields::Unnamed(f) => {
                     let types = f.unnamed.iter().map(|field| {
-                        let ty = &field.ty;
-                        quote! { || <#ty as ::tyzen::TsType>::ts_name() }
+                        let ty_name = ts_type_name(&field.ty, generic_params);
+                        quote! { || #ty_name }
                     });
                     quote! { ::tyzen::meta::VariantFields::Unnamed(&[#(#types),*]) }
                 }
                 Fields::Named(_f) => {
                     let field_rename_all = variant_serde.rename_all.or(container_serde.rename_all_fields);
-                    let fields = struct_fields_meta(&variant.fields, field_rename_all);
+                    let fields = struct_fields_meta(&variant.fields, field_rename_all, generic_params);
                     quote! { ::tyzen::meta::VariantFields::Named(&[#(#fields),*]) }
                 }
             };

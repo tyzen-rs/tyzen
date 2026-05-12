@@ -23,6 +23,7 @@ pub struct CommandMeta {
 
 pub struct TypeMeta {
     pub name: &'static str,
+    pub generic_params: &'static str,
     pub ts_def: fn() -> String,
     pub structure: fn() -> meta::TypeStructure,
 }
@@ -88,7 +89,8 @@ pub fn generate_full(
     }
 
     ts.push('\n');
-    ts.push_str("export type Result<T, E> = { status: \"ok\"; data: T } | { status: \"error\"; error: E }\n");
+    ts.push_str("/** Generic Result type used for command returns **/\n");
+    ts.push_str("export type Result<T, E = string> = { status: \"ok\"; data: T } | { status: \"error\"; error: E }\n");
 
     write_after_types(&mut ts);
 
@@ -125,14 +127,14 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("export type {} = {{ {} }}", meta.name, fields_str)
+            format!("export type {}{} = {{ {} }}", meta.name, meta.generic_params, fields_str)
         }
         meta::TypeStructure::Tuple(types) => {
             if types.len() == 1 {
-                format!("export type {} = {}", meta.name, (types[0])())
+                format!("export type {}{} = {}", meta.name, meta.generic_params, (types[0])())
             } else {
                 let inner = types.iter().map(|t| t()).collect::<Vec<_>>().join(", ");
-                format!("export type {} = [{}]", meta.name, inner)
+                format!("export type {}{} = [{}]", meta.name, meta.generic_params, inner)
             }
         }
         meta::TypeStructure::Enum(e) => {
@@ -149,8 +151,8 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
                     .collect::<Vec<_>>()
                     .join(",\n");
                 format!(
-                    "export const {} = {{\n{}\n}} as const;\nexport type {} = (typeof {})[keyof typeof {}]",
-                    meta.name, fields, meta.name, meta.name, meta.name
+                    "export const {} = {{\n{}\n}} as const;\nexport type {}{} = (typeof {})[keyof typeof {}]",
+                    meta.name, fields, meta.name, meta.generic_params, meta.name, meta.name
                 )
             } else {
                 let variants: Vec<String> = e
@@ -158,11 +160,11 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
                     .iter()
                     .map(|v| render_variant(v, &e, all_metas))
                     .collect();
-                format!("export type {} = {}", meta.name, variants.join(" | "))
+                format!("export type {}{} = {}", meta.name, meta.generic_params, variants.join(" | "))
             }
         }
         meta::TypeStructure::Transparent(inner) => {
-            format!("export type {} = {}", meta.name, inner)
+            format!("export type {}{} = {}", meta.name, meta.generic_params, inner)
         }
         meta::TypeStructure::Unit => {
             format!("export type {} = null", meta.name)
