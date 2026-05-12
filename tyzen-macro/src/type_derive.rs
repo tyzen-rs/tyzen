@@ -176,7 +176,10 @@ fn struct_definition(
     generic_params: &[String],
 ) -> proc_macro2::TokenStream {
     if serde.transparent {
-        let field = fields.iter().next().expect("transparent struct must have one field");
+        let field = fields
+            .iter()
+            .next()
+            .expect("transparent struct must have one field");
         let ty = ts_type_name(&field.ty, generic_params);
         return quote! {
             || format!("export type {}{} = {}", #name, #generic_suffix, #ty)

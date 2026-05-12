@@ -147,15 +147,15 @@ event.emit(&handle).ok(); // Correctly types the payload for the frontend
 
 | Feature | Importance | Notes |
 | :--- | :--- | :--- |
-| **Full Serde Parity** | **BASELINE** | `flatten`, `alias`, `default`, and `rename_all` support. Requires inter-type metadata. |
-| **Validation Sync** | **BASELINE** | Bridge `validator` rules (Rust) directly into Zod schemas (TS). |
-| **Namespaces** | **NON-NEGOTIABLE** | Crucial for organization; prevents naming collisions in large projects. |
-| **Zod Support** | **NON-NEGOTIABLE** | Generate Zod schemas alongside types for runtime frontend validation. |
-| **Result & Error** | **NON-NEGOTIABLE** | Deep support for custom Rust error types in command return signatures. |
-| **Constant Export** | **NON-NEGOTIABLE** | Sync `pub const` logic values from Rust to TS. |
-| **Mock Client** | **NON-NEGOTIABLE** | Generate mock JS/TS clients for testing/UI prototyping without the backend. |
-| **Doc Propagation** | **TAKE-A-LOOK** | Transform Rust doc comments (`///`) into TSDoc (`/** ... */`). |
-| **Binary Data** | **TAKE-A-LOOK** | Map `Vec<u8>` to `Uint8Array`/`ArrayBuffer` for optimized Tauri IPC. |
+| **Full Serde Parity** | Core | `flatten`, `alias`, `default`, and `rename_all` support. Requires inter-type metadata. |
+| **Validation Sync** | Core | Bridge `validator` rules (Rust) directly into Zod schemas (TS). |
+| **Namespaces** | Will implement | Crucial for organization; prevents naming collisions in large projects. |
+| **Zod Support** | Will implement | Generate Zod schemas alongside types for runtime frontend validation. |
+| **Result & Error** | Will implement | Deep support for custom Rust error types in command return signatures. |
+| **Constant Export** | Will implement | Sync `pub const` logic values from Rust to TS. |
+| **Mock Client** | Will implement | Generate mock JS/TS clients for testing/UI prototyping without the backend. |
+| **Doc Propagation** | | Transform Rust doc comments (`///`) into TSDoc (`/** ... */`). |
+| **Binary Data** | | Map `Vec<u8>` to `Uint8Array`/`ArrayBuffer` for optimized Tauri IPC. |
 
 ---
 
