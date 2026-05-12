@@ -147,12 +147,12 @@ event.emit(&handle).ok(); // Correctly types the payload for the frontend
 
 | Feature | Importance | Notes |
 | :--- | :--- | :--- |
-| **Full Serde Parity** | Core | `flatten`, `alias`, `default`, and `rename_all` support. Requires inter-type metadata. |
+| **Full Serde Parity** | Implemented | `flatten`, `alias`, `default`, and `rename_all` support. Requires inter-type metadata. |
 | **Validation Sync** | Core | Bridge `validator` rules (Rust) directly into Zod schemas (TS). |
 | **Namespaces** | Will implement | Crucial for organization; prevents naming collisions in large projects. |
 | **Zod Support** | Will implement | Generate Zod schemas alongside types for runtime frontend validation. |
 | **Result & Error** | Will implement | Deep support for custom Rust error types in command return signatures. |
-| **Constant Export** | Will implement | Sync `pub const` logic values from Rust to TS. |
+| **Constant Export** | Implemented | Sync `pub const` logic values from Rust to TS. |
 | **Mock Client** | Will implement | Generate mock JS/TS clients for testing/UI prototyping without the backend. |
 | **Doc Propagation** | | Transform Rust doc comments (`///`) into TSDoc (`/** ... */`). |
 | **Binary Data** | | Map `Vec<u8>` to `Uint8Array`/`ArrayBuffer` for optimized Tauri IPC. |
