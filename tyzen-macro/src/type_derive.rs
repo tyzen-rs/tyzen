@@ -27,6 +27,9 @@ struct SerdeAttrs {
     untagged: bool,
     transparent: bool,
     skip: bool,
+    flatten: bool,
+    default: bool,
+    alias: Vec<String>,
 }
 
 pub fn derive_type(item: TokenStream) -> TokenStream {
@@ -39,6 +42,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
     let name = &input.ident;
     let name_str = name.to_string();
     let ts_def = ts_definition(&input);
+    let structure = structure_definition(&input);
 
     let generics = &input.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -82,6 +86,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
             ::tyzen::TypeMeta {
                 name: #name_str,
                 ts_def: #ts_def,
+                structure: #structure,
             }
         }
     }
@@ -572,6 +577,22 @@ fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
                 return Ok(());
             }
 
+            if meta.path.is_ident("flatten") {
+                serde.flatten = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("default") {
+                serde.default = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("alias") {
+                let value = meta.value()?.parse::<syn::LitStr>()?;
+                serde.alias.push(value.value());
+                return Ok(());
+            }
+
             Ok(())
         });
     }
@@ -579,6 +600,163 @@ fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
     serde
 }
 
+fn structure_definition(input: &DeriveInput) -> proc_macro2::TokenStream {
+    let serde = serde_attrs(&input.attrs);
+    match &input.data {
+        Data::Struct(data) => {
+            if serde.transparent {
+                let field = data
+                    .fields
+                    .iter()
+                    .next()
+                    .expect("transparent struct must have one field");
+                let ty = &field.ty;
+                quote! {
+                    || ::tyzen::meta::TypeStructure::Transparent(<#ty as ::tyzen::TsType>::ts_name())
+                }
+            } else {
+                match &data.fields {
+                    Fields::Named(_) => {
+                        let fields = struct_fields_meta(&data.fields, serde.rename_all);
+                        quote! {
+                            || ::tyzen::meta::TypeStructure::Struct(::tyzen::meta::StructMeta {
+                                fields: &[#(#fields),*]
+                            })
+                        }
+                    }
+                    Fields::Unnamed(f) => {
+                        let types = f.unnamed.iter().map(|field| {
+                            let ty = &field.ty;
+                            quote! { || <#ty as ::tyzen::TsType>::ts_name() }
+                        });
+                        quote! {
+                            || ::tyzen::meta::TypeStructure::Tuple(&[#(#types),*])
+                        }
+                    }
+                    Fields::Unit => {
+                        quote! { || ::tyzen::meta::TypeStructure::Unit }
+                    }
+                }
+            }
+        }
+        Data::Enum(data) => {
+            let variants = enum_variants_meta(&data.variants, &serde);
+            let tag = serde.tag.as_deref();
+            let tag_quote = match tag {
+                Some(t) => quote! { Some(#t) },
+                None => quote! { None },
+            };
+            let content = serde.content.as_deref();
+            let content_quote = match content {
+                Some(c) => quote! { Some(#c) },
+                None => quote! { None },
+            };
+            let untagged = serde.untagged;
+            quote! {
+                || ::tyzen::meta::TypeStructure::Enum(::tyzen::meta::EnumMeta {
+                    variants: &[#(#variants),*],
+                    tag: #tag_quote,
+                    content: #content_quote,
+                    untagged: #untagged,
+                })
+            }
+        }
+        _ => quote! { || ::tyzen::meta::TypeStructure::Unit },
+    }
+}
+
+fn struct_fields_meta(
+    fields: &Fields,
+    rename_all: Option<RenameRule>,
+) -> Vec<proc_macro2::TokenStream> {
+    fields
+        .iter()
+        .filter_map(|field| field_meta(field, rename_all))
+        .collect()
+}
+
+fn field_meta(field: &Field, rename_all: Option<RenameRule>) -> Option<proc_macro2::TokenStream> {
+    let serde = serde_attrs(&field.attrs);
+    if serde.skip {
+        return None;
+    }
+
+    let field_name = field.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
+    let renamed_name = ts_name(&field_name, serde.rename.clone(), rename_all);
+    let optional = has_tyzen_optional(&field.attrs) || serde.default;
+    let flattened = serde.flatten;
+    
+    let ty = if has_tyzen_optional(&field.attrs) {
+        option_inner_type(&field.ty).unwrap()
+    } else {
+        &field.ty
+    };
+
+    let flatten_base_name = if flattened {
+        let syn::Type::Path(p) = ty else {
+             panic!("flattened field must be a path");
+        };
+        let ident = &p.path.segments.last().expect("empty path").ident;
+        let s = ident.to_string();
+        quote! { Some(#s) }
+    } else {
+        quote! { None }
+    };
+
+    Some(quote! {
+        ::tyzen::meta::FieldMeta {
+            name: #renamed_name,
+            ty_name: || <#ty as ::tyzen::TsType>::ts_name(),
+            optional: #optional,
+            flattened: #flattened,
+            flatten_base_name: #flatten_base_name,
+        }
+    })
+}
+
+fn enum_variants_meta(
+    variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
+    container_serde: &SerdeAttrs,
+) -> Vec<proc_macro2::TokenStream> {
+    variants
+        .iter()
+        .filter_map(|variant| {
+            let variant_serde = serde_attrs(&variant.attrs);
+            if variant_serde.skip {
+                return None;
+            }
+
+            let variant_name = ts_name(
+                &variant.ident.to_string(),
+                variant_serde.rename.clone(),
+                container_serde.rename_all,
+            );
+
+            let fields = match &variant.fields {
+                Fields::Unit => quote! { ::tyzen::meta::VariantFields::Unit },
+                Fields::Unnamed(f) => {
+                    let types = f.unnamed.iter().map(|field| {
+                        let ty = &field.ty;
+                        quote! { || <#ty as ::tyzen::TsType>::ts_name() }
+                    });
+                    quote! { ::tyzen::meta::VariantFields::Unnamed(&[#(#types),*]) }
+                }
+                Fields::Named(_f) => {
+                    let field_rename_all = variant_serde.rename_all.or(container_serde.rename_all_fields);
+                    let fields = struct_fields_meta(&variant.fields, field_rename_all);
+                    quote! { ::tyzen::meta::VariantFields::Named(&[#(#fields),*]) }
+                }
+            };
+
+            Some(quote! {
+                ::tyzen::meta::VariantMeta {
+                    name: #variant_name,
+                    fields: #fields,
+                }
+            })
+        })
+        .collect()
+}
 fn rename_rule(rule: &str) -> Option<RenameRule> {
     Some(match rule {
         "lowercase" => RenameRule::Lowercase,

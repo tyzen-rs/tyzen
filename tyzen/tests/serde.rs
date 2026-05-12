@@ -107,8 +107,6 @@ enum Untagged {
     Unit,
 }
 
-// --- Transparent Tests ---
-
 #[derive(Type)]
 #[serde(transparent)]
 struct TransparentStruct(u32);

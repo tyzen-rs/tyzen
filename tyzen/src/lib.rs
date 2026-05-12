@@ -2,6 +2,7 @@
 pub use inventory;
 pub use tyzen_macro::{Event, Type, command, event};
 pub mod utils;
+pub mod meta;
 
 use crate::utils::snake_to_camel;
 
@@ -23,6 +24,7 @@ pub struct CommandMeta {
 pub struct TypeMeta {
     pub name: &'static str,
     pub ts_def: fn() -> String,
+    pub structure: fn() -> meta::TypeStructure,
 }
 
 pub struct EventMeta {
@@ -63,8 +65,9 @@ pub fn generate_full(
     write_before_types(&mut ts);
 
     ts.push_str("\n/** autogen types **/\n");
-    for t in inventory::iter::<TypeMeta> {
-        ts.push_str(&(t.ts_def)());
+    let metas: Vec<&TypeMeta> = inventory::iter::<TypeMeta>().collect();
+    for t in &metas {
+        ts.push_str(&render_type(t, &metas));
         ts.push('\n');
     }
 
@@ -85,6 +88,124 @@ pub fn generate_full(
             "\x1b[33m\x1b[1m{:>12}\x1b[0m bindings are up to date",
             "Tyzen"
         );
+    }
+}
+
+fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
+    let structure = (meta.structure)();
+    match structure {
+        meta::TypeStructure::Struct(s) => {
+            let mut fields = Vec::new();
+            collect_fields_from_struct(&s, all_metas, &mut fields);
+            let fields_str = fields
+                .iter()
+                .map(|f| {
+                    let label = if f.optional {
+                        format!("{}?", f.name)
+                    } else {
+                        f.name.to_string()
+                    };
+                    format!("{}: {}", label, (f.ty_name)())
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("export type {} = {{ {} }}", meta.name, fields_str)
+        }
+        meta::TypeStructure::Tuple(types) => {
+            if types.len() == 1 {
+                format!("export type {} = {}", meta.name, (types[0])())
+            } else {
+                let inner = types.iter().map(|t| t()).collect::<Vec<_>>().join(", ");
+                format!("export type {} = [{}]", meta.name, inner)
+            }
+        }
+        meta::TypeStructure::Enum(e) => {
+            if !e.untagged && e.variants.iter().all(|v| matches!(v.fields, meta::VariantFields::Unit)) {
+                let variant_names: Vec<String> = e.variants.iter().map(|v| v.name.to_string()).collect();
+                let fields = variant_names.iter()
+                    .map(|n| format!("  {}: \"{}\"", n, n))
+                    .collect::<Vec<_>>()
+                    .join(",\n");
+                format!("export const {} = {{\n{}\n}} as const;\nexport type {} = (typeof {})[keyof typeof {}]", meta.name, fields, meta.name, meta.name, meta.name)
+            } else {
+                let variants: Vec<String> = e.variants.iter().map(|v| render_variant(v, &e, all_metas)).collect();
+                format!("export type {} = {}", meta.name, variants.join(" | "))
+            }
+        }
+        meta::TypeStructure::Transparent(inner) => {
+            format!("export type {} = {}", meta.name, inner)
+        }
+        meta::TypeStructure::Unit => {
+            format!("export type {} = null", meta.name)
+        }
+    }
+}
+
+fn collect_fields_from_struct(s: &meta::StructMeta, all_metas: &[&TypeMeta], out: &mut Vec<&'static meta::FieldMeta>) {
+    collect_fields_from_list(s.fields, all_metas, out);
+}
+
+fn collect_fields_from_list(fields: &'static [meta::FieldMeta], all_metas: &[&TypeMeta], out: &mut Vec<&'static meta::FieldMeta>) {
+    for field in fields {
+        if field.flattened {
+            if let Some(base_name) = field.flatten_base_name {
+                if let Some(target) = all_metas.iter().find(|m| m.name == base_name) {
+                    if let meta::TypeStructure::Struct(inner_s) = (target.structure)() {
+                        collect_fields_from_struct(&inner_s, all_metas, out);
+                    }
+                }
+            }
+        } else {
+            out.push(field);
+        }
+    }
+}
+
+fn render_variant(v: &meta::VariantMeta, e: &meta::EnumMeta, all_metas: &[&TypeMeta]) -> String {
+    let tag_name = e.tag.unwrap_or("tag");
+    let content_name = e.content;
+
+    match &v.fields {
+        meta::VariantFields::Unit => {
+            if e.untagged {
+                "null".to_string()
+            } else {
+                format!("{{ {}: \"{}\" }}", tag_name, v.name)
+            }
+        }
+        meta::VariantFields::Unnamed(types) => {
+            let values_ts = if types.len() == 1 {
+                (types[0])()
+            } else {
+                let inner = types.iter().map(|t| t()).collect::<Vec<_>>().join(", ");
+                format!("[{}]", inner)
+            };
+
+            if e.untagged {
+                values_ts
+            } else if let Some(content) = content_name {
+                format!("{{ {}: \"{}\", {}: {} }}", tag_name, v.name, content, values_ts)
+            } else {
+                format!("{{ {}: \"{}\", value: {} }}", tag_name, v.name, values_ts)
+            }
+        }
+        meta::VariantFields::Named(fields) => {
+            let mut all_fields = Vec::new();
+            collect_fields_from_list(fields, all_metas, &mut all_fields);
+            
+            let fields_str = all_fields.iter().map(|f| {
+                let label = if f.optional { format!("{}?", f.name) } else { f.name.to_string() };
+                format!("{}: {}", label, (f.ty_name)())
+            }).collect::<Vec<_>>().join(", ");
+
+            if e.untagged {
+                format!("{{ {} }}", fields_str)
+            } else if let Some(content) = content_name {
+                format!("{{ {}: \"{}\", {}: {{ {} }} }}", tag_name, v.name, content, fields_str)
+            } else {
+                format!("{{ {}: \"{}\", {} }}", tag_name, v.name, fields_str)
+            }
+        }
     }
 }
 
