@@ -121,8 +121,7 @@ struct TransparentNamed {
 fn serde_attributes_are_obeyed() {
     let output_path = "target/test-bindings/serde-all.ts";
 
-    tyzen::generate(output_path);
-
+    tyzen::generate(output_path).expect("generate should succeed");
     let output = fs::read_to_string(output_path).unwrap();
 
     // Renames

@@ -12,7 +12,7 @@ pub fn export(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let expanded = quote! {
         #input
 
-        tyzen::inventory::submit! {
+        tyzen::__private::inventory::submit! {
             tyzen::ConstMeta {
                 name: stringify!(#name),
                 value: #value_str,

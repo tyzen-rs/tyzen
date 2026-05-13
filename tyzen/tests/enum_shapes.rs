@@ -36,8 +36,7 @@ enum VariantFieldRenameOverride {
 fn enum_shapes_and_serde_names_are_generated() {
     let output_path = "target/test-bindings/enum-shapes.ts";
 
-    tyzen::generate(output_path);
-
+    tyzen::generate(output_path).expect("generate should succeed");
     let output = fs::read_to_string(output_path).unwrap();
     assert!(output.contains("\"Unit\""));
     assert!(output.contains("{ tag: \"Single\", value: string }"));

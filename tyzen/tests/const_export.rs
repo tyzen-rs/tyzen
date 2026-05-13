@@ -13,7 +13,7 @@ pub const IS_DEBUG: bool = true;
 #[test]
 fn test_const_export() {
     let output_path = "target/test-bindings/consts.ts";
-    tyzen::generate(output_path);
+    tyzen::generate(output_path).expect("generate should succeed");
 
     let content = fs::read_to_string(output_path).expect("failed to read output file");
     
