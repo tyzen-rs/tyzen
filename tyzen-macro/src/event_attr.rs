@@ -2,6 +2,8 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Expr, Lit, LitStr, parse_macro_input};
 
+use crate::type_derive::case::{RenameRule, apply_rename_rule};
+
 pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(item as DeriveInput);
     let event_name = parse_macro_input!(attr as LitStr);
@@ -51,7 +53,7 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
         if s.ends_with("Event") {
             s.truncate(s.len() - 5);
         }
-        to_kebab_case(&s)
+        apply_rename_rule(&s, RenameRule::KebabCase)
     };
 
     let struct_name = &input.ident;
@@ -64,7 +66,7 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
             }
         }
 
-        ::tyzen::inventory::submit! {
+        ::tyzen::__private::inventory::submit! {
             ::tyzen::EventMeta {
                 name: #name,
                 payload_type: <#struct_name #ty_generics as ::tyzen::TsType>::ts_name,
@@ -73,15 +75,4 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
-}
-
-fn to_kebab_case(s: &str) -> String {
-    let mut kebab = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            kebab.push('-');
-        }
-        kebab.push(c.to_ascii_lowercase());
-    }
-    kebab
 }
