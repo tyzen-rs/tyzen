@@ -10,8 +10,8 @@ pub struct HandlerMeta {
 
 inventory::collect!(HandlerMeta);
 
-pub fn generate(output_path: &str) {
-    tyzen::generate_full(output_path, write_tauri_commands, write_tauri_events);
+pub fn generate(output_path: &str) -> std::io::Result<()> {
+    tyzen::generate_full(output_path, write_tauri_commands, write_tauri_events)
 }
 
 pub fn write_tauri_commands(ts: &mut String) {
@@ -26,7 +26,7 @@ pub fn write_tauri_commands(ts: &mut String) {
         "import { listen, once, emit, type EventCallback } from \"@tauri-apps/api/event\"\n\n",
     );
     ts.push_str("export const commands = {\n");
-    for cmd in inventory::iter::<CommandMeta> {
+    for cmd in &commands {
         let fn_name = snake_to_camel(cmd.name);
         let params_ts: Vec<String> = cmd
             .params
@@ -34,9 +34,8 @@ pub fn write_tauri_commands(ts: &mut String) {
             .map(|p| {
                 let ty = (p.ty)();
                 let param_name = snake_to_camel(p.name);
-                if ty.starts_with("__TYZEN_CHANNEL__<") {
-                    let inner = &ty["__TYZEN_CHANNEL__<".len()..ty.len() - 1];
-                    format!("{}: (payload: {}) => void", param_name, inner)
+                if p.is_channel {
+                    format!("{}: (payload: {}) => void", param_name, ty)
                 } else {
                     format!("{}: {}", param_name, ty)
                 }
@@ -47,9 +46,8 @@ pub fn write_tauri_commands(ts: &mut String) {
             .params
             .iter()
             .map(|p| {
-                let ty = (p.ty)();
                 let param_name = snake_to_camel(p.name);
-                if ty.starts_with("__TYZEN_CHANNEL__<") {
+                if p.is_channel {
                     format!("{}: new Channel({})", param_name, param_name)
                 } else {
                     param_name
@@ -93,41 +91,38 @@ pub fn write_tauri_events(ts: &mut String) {
 
     ts.push_str("\n/** autogen events **/\n");
     ts.push_str("export type Events = {\n");
-    for event in inventory::iter::<EventMeta> {
-        let js_name = snake_to_camel(event.name.replace(":", "_").replace("-", "_").as_str());
+    for event in &events {
+        let js_name = snake_to_camel(event.name.replace(':', "_").replace('-', "_").as_str());
         ts.push_str(&format!("  {}: {},\n", js_name, (event.payload_type)()));
     }
     ts.push_str("}\n\n");
 
     ts.push_str("const __event_mappings__: Record<string, string> = {\n");
-    for event in inventory::iter::<EventMeta> {
-        let js_name = snake_to_camel(event.name.replace(":", "_").replace("-", "_").as_str());
+    for event in &events {
+        let js_name = snake_to_camel(event.name.replace(':', "_").replace('-', "_").as_str());
         ts.push_str(&format!("  {}: \"{}\",\n", js_name, event.name));
     }
     ts.push_str("}\n\n");
 
     ts.push_str("export const events = __makeEvents__<Events>(__event_mappings__)\n\n");
-
-    ts.push_str("function __makeEvents__<T extends Record<string, any>>(mappings: Record<string, string>) {\n");
-    ts.push_str("  return new Proxy({} as any, {\n");
-    ts.push_str("    get: (_, prop: string) => {\n");
-    ts.push_str("      const name = mappings[prop];\n");
-    ts.push_str("      return {\n");
-    ts.push_str(
+    ts.push_str(concat!(
+        "function __makeEvents__<T extends Record<string, any>>(mappings: Record<string, string>) {\n",
+        "  return new Proxy({} as any, {\n",
+        "    get: (_, prop: string) => {\n",
+        "      const name = mappings[prop];\n",
+        "      return {\n",
         "        listen: (cb: (payload: any) => void) => listen(name, (e) => cb(e.payload)),\n",
-    );
-    ts.push_str(
         "        once: (cb: (payload: any) => void) => once(name, (e) => cb(e.payload)),\n",
-    );
-    ts.push_str("        emit: (payload: any) => emit(name, payload),\n");
-    ts.push_str("      }\n");
-    ts.push_str("    }\n");
-    ts.push_str("  }) as { [K in keyof T]: { \n");
-    ts.push_str("    listen: (cb: (payload: T[K]) => void) => Promise<any>,\n");
-    ts.push_str("    once: (cb: (payload: T[K]) => void) => Promise<any>,\n");
-    ts.push_str("    emit: (payload: T[K]) => Promise<void>\n");
-    ts.push_str("  } };\n");
-    ts.push_str("}\n");
+        "        emit: (payload: any) => emit(name, payload),\n",
+        "      }\n",
+        "    }\n",
+        "  }) as { [K in keyof T]: {\n",
+        "    listen: (cb: (payload: T[K]) => void) => Promise<any>,\n",
+        "    once: (cb: (payload: T[K]) => void) => Promise<any>,\n",
+        "    emit: (payload: T[K]) => Promise<void>\n",
+        "  } };\n",
+        "}\n"
+    ));
 }
 
 #[macro_export]

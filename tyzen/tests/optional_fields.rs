@@ -17,7 +17,7 @@ struct OptionalFieldCase {
 fn selected_fields_can_generate_typescript_optional_properties() {
     let output_path = "target/test-bindings/optional-fields.ts";
 
-    tyzen::generate(output_path);
+    tyzen::generate(output_path).expect("generate should succeed");
 
     let output = fs::read_to_string(output_path).unwrap();
     assert!(output.contains("required_nullable: string | null"));

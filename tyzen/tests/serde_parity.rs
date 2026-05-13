@@ -36,7 +36,7 @@ struct AliasField {
 #[test]
 fn test_serde_parity() {
     let output_path = "target/test-bindings/serde-parity.ts";
-    tyzen::generate(output_path);
+    tyzen::generate(output_path).expect("generate should succeed");
 
     let output = fs::read_to_string(output_path).expect("Failed to read generated bindings");
 

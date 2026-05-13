@@ -64,7 +64,7 @@ fn test_struct_with_results() {
 #[test]
 fn test_generation() {
     let output_path = "target/test-bindings/result-error.ts";
-    tyzen::generate(output_path);
+    tyzen::generate(output_path).expect("generate should succeed");
     let output = std::fs::read_to_string(output_path).unwrap();
 
     assert!(output.contains(
