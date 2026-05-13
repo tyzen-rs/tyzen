@@ -3,6 +3,7 @@ use proc_macro::TokenStream;
 mod command_attr;
 mod event_attr;
 mod type_derive;
+mod export_attr;
 
 #[proc_macro_attribute]
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -27,4 +28,9 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
 #[proc_macro_derive(Type, attributes(tyzen, serde))]
 pub fn derive_type(item: TokenStream) -> TokenStream {
     type_derive::derive_type(item)
+}
+
+#[proc_macro_attribute]
+pub fn export(attr: TokenStream, item: TokenStream) -> TokenStream {
+    export_attr::export(attr, item)
 }

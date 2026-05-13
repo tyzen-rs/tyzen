@@ -52,3 +52,10 @@ mod chrono_impls {
         }
     }
 }
+
+#[cfg(feature = "anyhow")]
+impl crate::TsType for anyhow::Error {
+    fn ts_name() -> String {
+        "string".to_string()
+    }
+}
