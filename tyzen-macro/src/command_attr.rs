@@ -49,7 +49,7 @@ fn expand_command(item: TokenStream, emit_tauri: bool) -> TokenStream {
     quote! {
         #func
 
-        ::tyzen::inventory::submit! {
+        ::tyzen::__private::inventory::submit! {
             ::tyzen::CommandMeta {
                 name: #fn_name_str,
                 params: &[#(#params_ts),*],
@@ -108,7 +108,7 @@ fn tauri_handler_submission(
             handlers(invoke)
         }
 
-        ::tyzen_tauri::inventory::submit! {
+        ::tyzen_tauri::__private::inventory::submit! {
             ::tyzen_tauri::HandlerMeta {
                 name: #fn_name_str,
                 handler: #handler_fn_name,

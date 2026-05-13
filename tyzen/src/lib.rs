@@ -1,5 +1,9 @@
+/// Private re-exports for macro-generated code. Not part of the public API.
 #[doc(hidden)]
-pub use inventory;
+pub mod __private {
+    pub use inventory;
+}
+
 pub use tyzen_macro::{Event, Type, command, event, export};
 pub mod meta;
 pub mod utils;
@@ -10,35 +14,95 @@ pub mod ts_type;
 
 type TypeFactory = fn() -> String;
 
+/// Metadata describing a single parameter of a registered command.
+///
+/// Generated automatically by `#[tyzen::command]`. Not intended for manual use.
 pub struct ParamMeta {
+    /// The parameter name as it appears in the Rust function signature.
     pub name: &'static str,
+    /// Returns the TypeScript type name for this parameter.
     pub ty: TypeFactory,
+    /// Whether this parameter is a `tauri::ipc::Channel<T>`.
+    ///
+    /// When `true`, the TypeScript wrapper accepts a callback `(payload: T) => void`
+    /// instead of a value.
     pub is_channel: bool,
 }
 
+/// Metadata describing a command registered for TypeScript generation.
+///
+/// Generated automatically by `#[tyzen::command]` or `#[tyzen_tauri::command]`.
+/// Not intended for manual use.
 pub struct CommandMeta {
+    /// The Rust function name (snake_case). Converted to camelCase in generated TypeScript.
     pub name: &'static str,
+    /// The command's parameters.
     pub params: &'static [ParamMeta],
+    /// Returns the TypeScript return type for this command.
     pub return_type: TypeFactory,
 }
 
+/// Metadata describing a Rust type registered for TypeScript generation.
+///
+/// Generated automatically by `#[derive(tyzen::Type)]`. Not intended for manual use.
 pub struct TypeMeta {
+    /// The Rust type name, used as the TypeScript type name.
     pub name: &'static str,
+    /// Generic parameter string (e.g. `"<T>"`) or `""` for non-generic types.
     pub generic_params: &'static str,
+    /// Returns the structural description of this type used for code generation.
     pub structure: fn() -> meta::TypeStructure,
 }
 
+/// Metadata describing a typed event registered for TypeScript generation.
+///
+/// Generated automatically by `#[derive(tyzen::Event)]`. Not intended for manual use.
 pub struct EventMeta {
+    /// The event name emitted over the wire (e.g. `"user-joined"`).
     pub name: &'static str,
+    /// Returns the TypeScript type name for the event payload.
     pub payload_type: fn() -> String,
 }
 
+/// Metadata describing a constant exported to TypeScript.
+///
+/// Generated automatically by `#[tyzen::export]` on a `pub const` item.
+/// Not intended for manual use.
 pub struct ConstMeta {
+    /// The constant name as it appears in the generated TypeScript.
     pub name: &'static str,
+    /// The constant value as a string literal for direct embedding in TypeScript.
     pub value: &'static str,
 }
 
+/// Trait for types that have a TypeScript type name representation.
+///
+/// Implemented automatically by `#[derive(tyzen::Type)]`. Built-in implementations
+/// are provided for Rust primitives, `String`, `Vec<T>`, `Option<T>`,
+/// `Result<T, E>`, and common standard library types.
+///
+/// Implement this manually only for external types not covered by Tyzen,
+/// or wrap them in a newtype with `#[derive(tyzen::Type)]`.
+///
+/// # Examples
+///
+/// ```rust
+/// use tyzen::TsType;
+///
+/// assert_eq!(u32::ts_name(), "number");
+/// assert_eq!(String::ts_name(), "string");
+/// assert_eq!(bool::ts_name(), "boolean");
+/// assert_eq!(<Vec<u32>>::ts_name(), "number[]");
+/// assert_eq!(<Option<String>>::ts_name(), "string | null");
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be used as a TypeScript type",
+    label = "this type has no TypeScript representation",
+    note = "add `#[derive(tyzen::Type)]` to your type, or implement `tyzen::TsType` manually",
+    note = "for types from external crates, use a newtype: `struct MyWrapper(ExternalType);`"
+)]
 pub trait TsType {
+    /// Returns the TypeScript type name for `Self`.
     fn ts_name() -> String;
 }
 
@@ -47,10 +111,41 @@ inventory::collect!(TypeMeta);
 inventory::collect!(EventMeta);
 inventory::collect!(ConstMeta);
 
+/// Generates TypeScript bindings for all registered types, commands, and constants.
+///
+/// This is the primary entry point for non-Tauri projects. For Tauri projects,
+/// use `tyzen_tauri::generate` instead, which also emits typed command wrappers
+/// and event listeners.
+///
+/// Creates parent directories as needed. The file is only written when content
+/// has changed, avoiding unnecessary downstream rebuilds.
+///
+/// # Errors
+///
+/// Returns an error if the output directory cannot be created or the file
+/// cannot be written.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// fn main() {
+///     tyzen::generate("../src/bindings.ts")
+///         .expect("failed to generate TypeScript bindings");
+/// }
+/// ```
 pub fn generate(output_path: &str) -> std::io::Result<()> {
     generate_full(output_path, write_command_declarations, |_| {})
 }
 
+/// Generates TypeScript bindings with a custom command writer.
+///
+/// Like [`generate`], but allows you to control how command declarations
+/// are emitted. Useful when building framework-specific integrations on
+/// top of Tyzen.
+///
+/// # Errors
+///
+/// Returns an error if the output file cannot be created or written.
 pub fn generate_with_commands(
     output_path: &str,
     write_commands: fn(&mut String),
@@ -58,6 +153,35 @@ pub fn generate_with_commands(
     generate_full(output_path, write_commands, |_| {})
 }
 
+/// Generates TypeScript bindings with full control over the output structure.
+///
+/// `write_before_types` runs before type definitions (use it for imports and
+/// command declarations). `write_after_types` runs last (use it for event
+/// helpers or custom utility code).
+///
+/// The generated file structure is:
+/// 1. Header comment
+/// 2. `write_before_types` output
+/// 3. Exported constants (sorted alphabetically by name)
+/// 4. Type definitions (sorted alphabetically by name)
+/// 5. Built-in `Result<T, E>` type alias
+/// 6. `write_after_types` output
+///
+/// # Errors
+///
+/// Returns an error if the output file cannot be created or written.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// fn main() {
+///     tyzen::generate_full(
+///         "../src/bindings.ts",
+///         tyzen::write_command_declarations,
+///         |ts| ts.push_str("// custom footer\n"),
+///     ).expect("failed to generate bindings");
+/// }
+/// ```
 pub fn generate_full(
     output_path: &str,
     write_before_types: impl FnOnce(&mut String),
@@ -75,7 +199,8 @@ pub fn generate_full(
     ts.push_str("// auto-generated by tyzen, do not edit\n\n");
     write_before_types(&mut ts);
 
-    let constants: Vec<_> = inventory::iter::<ConstMeta>().collect();
+    let mut constants: Vec<_> = inventory::iter::<ConstMeta>().collect();
+    constants.sort_by_key(|c| c.name);
     if !constants.is_empty() {
         ts.push_str("\n/** autogen constants **/\n");
         for c in constants {
@@ -87,7 +212,8 @@ pub fn generate_full(
     }
 
     ts.push_str("\n/** autogen types **/\n");
-    let metas: Vec<&TypeMeta> = inventory::iter::<TypeMeta>().collect();
+    let mut metas: Vec<&TypeMeta> = inventory::iter::<TypeMeta>().collect();
+    metas.sort_by_key(|m| m.name);
     for t in &metas {
         ts.push_str(&render_type(t, &metas));
         ts.push('\n');
@@ -268,11 +394,19 @@ fn render_variant(v: &meta::VariantMeta, e: &meta::EnumMeta, all_metas: &[&TypeM
     }
 }
 
+/// Writes framework-agnostic TypeScript command type declarations.
+///
+/// Emits a `Commands` type whose methods match each registered `#[tyzen::command]`,
+/// mapping Rust snake_case names to TypeScript camelCase.
+///
+/// This is used internally by [`generate`] and can be passed to
+/// [`generate_full`] as the `write_before_types` callback.
 pub fn write_command_declarations(ts: &mut String) {
-    let commands: Vec<_> = inventory::iter::<CommandMeta>().collect();
+    let mut commands: Vec<_> = inventory::iter::<CommandMeta>().collect();
     if commands.is_empty() {
         return;
     }
+    commands.sort_by_key(|c| c.name);
 
     ts.push_str("/** autogen commands **/\n");
     ts.push_str("export type Commands = {\n");

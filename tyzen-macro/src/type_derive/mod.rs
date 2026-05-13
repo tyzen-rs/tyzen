@@ -77,7 +77,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
             }
         }
 
-        ::tyzen::inventory::submit! {
+        ::tyzen::__private::inventory::submit! {
             ::tyzen::TypeMeta {
                 name: #name_str,
                 generic_params: #generic_params_str,

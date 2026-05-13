@@ -1,8 +1,15 @@
-pub use tyzen::inventory;
+/// Private re-exports for macro-generated code. Not part of the public API.
+#[doc(hidden)]
+pub mod __private {
+    pub use tyzen::__private::inventory;
+}
+
 pub use tyzen_macro::tauri_command as command;
 
-use tyzen::{CommandMeta, EventMeta, utils::snake_to_camel};
+use tyzen::{CommandMeta, EventMeta, __private::inventory, utils::snake_to_camel};
 
+
+/// Metadata for a Tauri IPC handler registered via `#[tyzen_tauri::command]`.
 pub struct HandlerMeta {
     pub name: &'static str,
     pub handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool,
@@ -15,10 +22,11 @@ pub fn generate(output_path: &str) -> std::io::Result<()> {
 }
 
 pub fn write_tauri_commands(ts: &mut String) {
-    let commands: Vec<_> = inventory::iter::<CommandMeta>().collect();
+    let mut commands: Vec<_> = inventory::iter::<CommandMeta>().collect();
     if commands.is_empty() {
         return;
     }
+    commands.sort_by_key(|c| c.name);
 
     ts.push_str("/** autogen commands **/\n");
     ts.push_str("import { invoke, Channel } from \"@tauri-apps/api/core\"\n");
@@ -127,15 +135,35 @@ pub fn write_tauri_events(ts: &mut String) {
 
 #[macro_export]
 macro_rules! handler {
-    () => {
+    () => {{
+        // In debug builds, warn about commands registered with #[tyzen::command]
+        // instead of #[tyzen_tauri::command] — they have TS metadata but no handler.
+        #[cfg(debug_assertions)]
+        {
+            let handler_names: ::std::collections::HashSet<&str> =
+                ::tyzen::__private::inventory::iter::<::tyzen_tauri::HandlerMeta>()
+                    .map(|h| h.name)
+                    .collect();
+            for cmd in ::tyzen::__private::inventory::iter::<::tyzen::CommandMeta>() {
+                if !handler_names.contains(cmd.name) {
+                    eprintln!(
+                        "[tyzen] warning: command `{}` has TypeScript metadata but no Tauri \
+                         handler. Did you use #[tyzen::command] instead of \
+                         #[tyzen_tauri::command]?",
+                        cmd.name
+                    );
+                }
+            }
+        }
+
         |invoke: ::tauri::ipc::Invoke<::tauri::Wry>| {
             let cmd = invoke.message.command().to_string();
-            for meta in ::tyzen::inventory::iter::<::tyzen_tauri::HandlerMeta> {
+            for meta in ::tyzen::__private::inventory::iter::<::tyzen_tauri::HandlerMeta>() {
                 if meta.name == cmd {
                     return (meta.handler)(invoke);
                 }
             }
             false
         }
-    };
+    }};
 }

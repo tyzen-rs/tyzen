@@ -66,7 +66,7 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
             }
         }
 
-        ::tyzen::inventory::submit! {
+        ::tyzen::__private::inventory::submit! {
             ::tyzen::EventMeta {
                 name: #name,
                 payload_type: <#struct_name #ty_generics as ::tyzen::TsType>::ts_name,
