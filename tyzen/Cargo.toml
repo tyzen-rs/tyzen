@@ -13,6 +13,7 @@ default = []
 serde_json = ["dep:serde_json"]
 uuid = ["dep:uuid"]
 chrono = ["dep:chrono"]
+anyhow = ["dep:anyhow"]
 
 [dependencies]
 inventory = "0.3.24"
@@ -20,6 +21,8 @@ tyzen-macro = { version = "0.1.9", path = "../tyzen-macro" }
 serde_json = { version = "1", optional = true }
 uuid = { version = "1", optional = true }
 chrono = { version = "0.4", optional = true }
+anyhow = { version = "1", optional = true }
 
 [dev-dependencies]
 trybuild = "1"
+serde = { version = "1", features = ["derive"] }

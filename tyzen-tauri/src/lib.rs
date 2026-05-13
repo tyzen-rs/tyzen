@@ -61,17 +61,26 @@ pub fn write_tauri_commands(ts: &mut String) {
         let ts_return_type = if raw_return_type.starts_with("Result<") {
             raw_return_type
         } else {
-            format!("Result<{}, any>", raw_return_type)
+            format!("Result<{}>", raw_return_type)
         };
 
         ts.push_str(&format!(
-            "  async {}({}): Promise<{}> {{try {{return {{status: \"ok\",\n    data: await invoke(\"{}\", {{ {} }}),}};}}\ncatch (e) {{if (e instanceof Error) throw e;return {{ status: \"error\", error: e as any }};}}}},\n",
+            "  async {}({}): Promise<{}> {{\n",
             fn_name,
             params_ts.join(", "),
-            ts_return_type,
-            cmd.name,
-            invoke_args.join(", "),
+            ts_return_type
         ));
+        ts.push_str("    try {\n");
+        ts.push_str(&format!(
+            "      return {{ status: \"ok\", data: await invoke(\"{}\", {{ {} }}) }};\n",
+            cmd.name,
+            invoke_args.join(", ")
+        ));
+        ts.push_str("    } catch (e) {\n");
+        ts.push_str("      if (e instanceof Error) throw e;\n");
+        ts.push_str("      return { status: \"error\", error: e as any };\n");
+        ts.push_str("    }\n");
+        ts.push_str("  },\n");
     }
     ts.push_str("}\n");
 }
