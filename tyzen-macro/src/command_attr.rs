@@ -3,29 +3,21 @@ use quote::quote;
 use syn::{FnArg, ItemFn, PatType, ReturnType, parse_macro_input};
 
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return quote! {
-            compile_error!("unsupported tyzen::command argument; use #[tyzen::command] for framework-agnostic TS metadata or #[tyzen_tauri::command] for Tauri handlers");
-        }
-        .into();
-    }
-
-    expand_command(item, false)
+    let ns = parse_ns(attr);
+    expand_command(item, false, ns)
 }
 
 pub fn tauri_command(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return quote! {
-            compile_error!("unsupported tyzen_tauri::command argument; use #[tyzen_tauri::command]");
-        }
-        .into();
-    }
-
-    expand_command(item, true)
+    let ns = parse_ns(attr);
+    expand_command(item, true, ns)
 }
 
-fn expand_command(item: TokenStream, emit_tauri: bool) -> TokenStream {
+fn expand_command(item: TokenStream, emit_tauri: bool, ns: Option<String>) -> TokenStream {
     let func = parse_macro_input!(item as ItemFn);
+    let ns_val = match ns {
+        Some(s) => quote! { Some(#s) },
+        None => quote! { None },
+    };
     let sig = &func.sig;
     let fn_name = &sig.ident;
     let fn_name_str = fn_name.to_string();
@@ -54,6 +46,7 @@ fn expand_command(item: TokenStream, emit_tauri: bool) -> TokenStream {
                 name: #fn_name_str,
                 params: &[#(#params_ts),*],
                 return_type: #return_type_fn,
+                ns: #ns_val,
             }
         }
 
@@ -135,4 +128,25 @@ fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
         syn::GenericArgument::Type(inner) => Some(inner),
         _ => None,
     })
+}
+
+fn parse_ns(attr: TokenStream) -> Option<String> {
+    if attr.is_empty() {
+        return None;
+    }
+
+    let mut ns = None;
+    let parser = syn::meta::parser(|meta| {
+        if meta.path.is_ident("ns") || meta.path.is_ident("namespace") {
+            let value = meta.value()?.parse::<syn::LitStr>()?;
+            ns = Some(value.value());
+            return Ok(());
+        }
+        Ok(())
+    });
+
+    use syn::parse::Parser;
+    let _ = parser.parse(attr);
+
+    ns
 }

@@ -27,8 +27,9 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn derive_event(item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
 
-    // Check for #[tyzen(name = "...")]
+    // Check for #[tyzen(name = "...", ns = "...")]
     let mut custom_name = None;
+    let mut ns = None;
     for attr in &input.attrs {
         if attr.path().is_ident("tyzen") {
             let _ = attr.parse_nested_meta(|meta| {
@@ -39,6 +40,15 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
                         && let Lit::Str(lit_str) = expr_lit.lit
                     {
                         custom_name = Some(lit_str.value());
+                    }
+                }
+                if meta.path.is_ident("ns") || meta.path.is_ident("namespace") {
+                    let value = meta.value()?;
+                    let expr: Expr = value.parse()?;
+                    if let Expr::Lit(expr_lit) = expr
+                        && let Lit::Str(lit_str) = expr_lit.lit
+                    {
+                        ns = Some(lit_str.value());
                     }
                 }
                 Ok(())
@@ -58,6 +68,10 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
 
     let struct_name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let ns_val = match ns {
+        Some(s) => quote! { Some(#s) },
+        None => quote! { None },
+    };
 
     let expanded = quote! {
         impl #impl_generics #struct_name #ty_generics #where_clause {
@@ -70,6 +84,7 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
             ::tyzen::EventMeta {
                 name: #name,
                 payload_type: <#struct_name #ty_generics as ::tyzen::TsType>::ts_name,
+                ns: #ns_val,
             }
         }
     };

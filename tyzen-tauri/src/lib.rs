@@ -22,115 +22,60 @@ pub fn generate(output_path: &str) -> std::io::Result<()> {
 }
 
 pub fn write_tauri_commands(ts: &mut String) {
-    let mut commands: Vec<_> = inventory::iter::<CommandMeta>().collect();
-    if commands.is_empty() {
-        return;
-    }
-    commands.sort_by_key(|c| c.name);
-
-    ts.push_str("/** autogen commands **/\n");
+    let map = tyzen::NamespaceMap::collect();
+    
+    ts.push_str("/** autogen helpers **/\n");
     ts.push_str("import { invoke, Channel } from \"@tauri-apps/api/core\"\n");
-    ts.push_str(
-        "import { listen, once, emit, type EventCallback } from \"@tauri-apps/api/event\"\n\n",
-    );
-    ts.push_str("export const commands = {\n");
-    for cmd in &commands {
-        let fn_name = snake_to_camel(cmd.name);
-        let params_ts: Vec<String> = cmd
-            .params
-            .iter()
-            .map(|p| {
-                let ty = (p.ty)();
-                let param_name = snake_to_camel(p.name);
-                if p.is_channel {
-                    format!("{}: (payload: {}) => void", param_name, ty)
-                } else {
-                    format!("{}: {}", param_name, ty)
-                }
-            })
-            .collect();
+    ts.push_str("import { listen, once, emit, type EventCallback } from \"@tauri-apps/api/event\"\n\n");
+    
+    ts.push_str(concat!(
+        "async function __invoke<T>(name: string, args: Record<string, any>): Promise<Result<T>> {\n",
+        "  try {\n",
+        "    const finalArgs: Record<string, any> = {};\n",
+        "    for (const [k, v] of Object.entries(args)) {\n",
+        "       if (v instanceof Function) { /* logic for channel placeholder? */ }\n",
+        "       finalArgs[k] = v;\n",
+        "    }\n",
+        "    return { status: \"ok\", data: await invoke(name, args) };\n",
+        "  } catch (e) {\n",
+        "    if (e instanceof Error) throw e;\n",
+        "    return { status: \"error\", error: e as any };\n",
+        "  }\n",
+        "}\n\n",
+        "function __listen(name: string, cb: (payload: any) => void) {\n",
+        "  return listen(name, (e) => cb(e.payload));\n",
+        "}\n\n"
+    ));
 
-        let invoke_args: Vec<String> = cmd
-            .params
-            .iter()
-            .map(|p| {
-                let param_name = snake_to_camel(p.name);
-                if p.is_channel {
-                    format!("{}: new Channel({})", param_name, param_name)
-                } else {
-                    param_name
-                }
-            })
-            .collect();
-
-        let raw_return_type = (cmd.return_type)();
-        let ts_return_type = if raw_return_type.starts_with("Result<") {
-            raw_return_type
-        } else {
-            format!("Result<{}>", raw_return_type)
-        };
-
-        ts.push_str(&format!(
-            "  async {}({}): Promise<{}> {{\n",
-            fn_name,
-            params_ts.join(", "),
-            ts_return_type
-        ));
-        ts.push_str("    try {\n");
-        ts.push_str(&format!(
-            "      return {{ status: \"ok\", data: await invoke(\"{}\", {{ {} }}) }};\n",
-            cmd.name,
-            invoke_args.join(", ")
-        ));
-        ts.push_str("    } catch (e) {\n");
-        ts.push_str("      if (e instanceof Error) throw e;\n");
-        ts.push_str("      return { status: \"error\", error: e as any };\n");
-        ts.push_str("    }\n");
-        ts.push_str("  },\n");
+    if let Some(root_commands) = map.commands.get(&None) {
+        ts.push_str("export const commands = {\n");
+        for cmd in root_commands {
+            let fn_name = snake_to_camel(cmd.name);
+            let params_ts: Vec<String> = cmd.params.iter().map(|p| format!("{}: {}", p.name, (p.ty)())).collect();
+            ts.push_str(&format!("  {}: ({}) => __invoke<{}>(\"{}\", {{ {} }}),\n", 
+                fn_name, 
+                params_ts.join(", "), 
+                (cmd.return_type)(), 
+                cmd.name,
+                cmd.params.iter().map(|p| p.name).collect::<Vec<_>>().join(", ")
+            ));
+        }
+        ts.push_str("}\n");
     }
-    ts.push_str("}\n");
 }
 
 pub fn write_tauri_events(ts: &mut String) {
-    let events: Vec<_> = inventory::iter::<EventMeta>().collect();
-    if events.is_empty() {
-        return;
+    let map = tyzen::NamespaceMap::collect();
+    if let Some(root_events) = map.events.get(&None) {
+        ts.push_str("\n/** Global Events **/\n");
+        ts.push_str("export const events = {\n");
+        for ev in root_events {
+             let ev_fn_name = format!("on{}", snake_to_camel(ev.name).replace("-", "").replace(":", ""));
+             ts.push_str(&format!("  {}: (cb: (payload: {}) => void) => __listen(\"{}\", cb),\n", 
+                ev_fn_name, (ev.payload_type)(), ev.name));
+        }
+        ts.push_str("}\n");
     }
-
-    ts.push_str("\n/** autogen events **/\n");
-    ts.push_str("export type Events = {\n");
-    for event in &events {
-        let js_name = snake_to_camel(event.name.replace(':', "_").replace('-', "_").as_str());
-        ts.push_str(&format!("  {}: {},\n", js_name, (event.payload_type)()));
-    }
-    ts.push_str("}\n\n");
-
-    ts.push_str("const __event_mappings__: Record<string, string> = {\n");
-    for event in &events {
-        let js_name = snake_to_camel(event.name.replace(':', "_").replace('-', "_").as_str());
-        ts.push_str(&format!("  {}: \"{}\",\n", js_name, event.name));
-    }
-    ts.push_str("}\n\n");
-
-    ts.push_str("export const events = __makeEvents__<Events>(__event_mappings__)\n\n");
-    ts.push_str(concat!(
-        "function __makeEvents__<T extends Record<string, any>>(mappings: Record<string, string>) {\n",
-        "  return new Proxy({} as any, {\n",
-        "    get: (_, prop: string) => {\n",
-        "      const name = mappings[prop];\n",
-        "      return {\n",
-        "        listen: (cb: (payload: any) => void) => listen(name, (e) => cb(e.payload)),\n",
-        "        once: (cb: (payload: any) => void) => once(name, (e) => cb(e.payload)),\n",
-        "        emit: (payload: any) => emit(name, payload),\n",
-        "      }\n",
-        "    }\n",
-        "  }) as { [K in keyof T]: {\n",
-        "    listen: (cb: (payload: T[K]) => void) => Promise<any>,\n",
-        "    once: (cb: (payload: T[K]) => void) => Promise<any>,\n",
-        "    emit: (payload: T[K]) => Promise<void>\n",
-        "  } };\n",
-        "}\n"
-    ));
 }
 
 #[macro_export]
