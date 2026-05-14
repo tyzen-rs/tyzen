@@ -270,7 +270,7 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
             }
         }
         meta::TypeStructure::Enum(e) => {
-            if !e.untagged
+            let enum_def = if !e.untagged
                 && e.variants
                     .iter()
                     .all(|v| matches!(v.fields, meta::VariantFields::Unit))
@@ -293,6 +293,12 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
                     .map(|v| render_variant(v, &e, all_metas))
                     .collect();
                 format!("export type {}{} = {}", meta.name, meta.generic_params, variants.join(" | "))
+            };
+
+            if let Some(meta_obj) = render_enum_meta(meta, &e) {
+                format!("{}\n\n{}", enum_def, meta_obj)
+            } else {
+                enum_def
             }
         }
         meta::TypeStructure::Transparent(inner) => {
@@ -302,6 +308,36 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
             format!("export type {} = null", meta.name)
         }
     }
+}
+
+pub fn render_enum_meta(type_meta: &TypeMeta, e: &meta::EnumMeta) -> Option<String> {
+    if e.variants.iter().all(|v| v.attrs.is_empty()) {
+        return None;
+    }
+
+    let meta_name = e.meta_name.unwrap_or_else(|| {
+        Box::leak(format!("{}Meta", type_meta.name).into_boxed_str())
+    });
+
+    let mut lines = Vec::new();
+    for v in e.variants {
+        let mut attrs = Vec::new();
+        for (k, v) in v.attrs {
+            attrs.push(format!("{}: \"{}\"", snake_to_camel(k), v));
+        }
+        let attrs_str = attrs.join(", ");
+        if attrs_str.is_empty() {
+            lines.push(format!("  {}: {{}}", v.name));
+        } else {
+            lines.push(format!("  {}: {{ {} }}", v.name, attrs_str));
+        }
+    }
+
+    Some(format!(
+        "export const {} = {{\n{}\n}} as const;",
+        meta_name,
+        lines.join(",\n")
+    ))
 }
 
 fn collect_fields_from_list(

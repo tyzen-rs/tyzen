@@ -1,6 +1,6 @@
 use quote::quote;
 use syn::{Data, DeriveInput, Field, Fields};
-use super::attr::{SerdeAttrs, has_tyzen_optional, option_inner_type, serde_attrs};
+use super::attr::{SerdeAttrs, has_tyzen_optional, option_inner_type, serde_attrs, tyzen_attrs};
 use super::case::{RenameRule, apply_rename_rule};
 
 pub fn structure_definition(input: &DeriveInput, generic_params: &[String]) -> proc_macro2::TokenStream {
@@ -57,12 +57,19 @@ pub fn structure_definition(input: &DeriveInput, generic_params: &[String]) -> p
                 None => quote! { None },
             };
             let untagged = serde.untagged;
+            let tyzen = tyzen_attrs(&input.attrs);
+            let meta_name = match tyzen.meta_name {
+                Some(m) => quote! { Some(#m) },
+                None => quote! { None },
+            };
+
             quote! {
                 || ::tyzen::meta::TypeStructure::Enum(::tyzen::meta::EnumMeta {
                     variants: &[#(#variants),*],
                     tag: #tag_quote,
                     content: #content_quote,
                     untagged: #untagged,
+                    meta_name: #meta_name,
                 })
             }
         }
@@ -167,10 +174,16 @@ fn enum_variants_meta(
                 }
             };
 
+            let tyzen = tyzen_attrs(&variant.attrs);
+            let attrs = tyzen.variant_meta.iter().map(|(k, v)| {
+                quote! { (#k, #v) }
+            });
+
             Some(quote! {
                 ::tyzen::meta::VariantMeta {
                     name: #variant_name,
                     fields: #fields,
+                    attrs: &[#(#attrs),*],
                 }
             })
         })
