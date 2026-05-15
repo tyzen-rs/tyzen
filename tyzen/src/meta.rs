@@ -31,10 +31,6 @@ pub struct EnumMeta {
     pub content: Option<&'static str>,
     /// Whether `#[serde(untagged)]` is present.
     pub untagged: bool,
-    /// The name for the generated metadata object, if any.
-    ///
-    /// Set by `#[tyzen(meta = "...")]`.
-    pub meta_name: Option<&'static str>,
 }
 
 /// Metadata for a single struct or variant field.
@@ -59,10 +55,6 @@ pub struct VariantMeta {
     pub name: &'static str,
     /// The shape of this variant's fields.
     pub fields: VariantFields,
-    /// Arbitrary metadata attributes attached to this variant.
-    ///
-    /// Captured from `#[tyzen(key = "value")]`.
-    pub attrs: &'static [(&'static str, &'static str)],
 }
 
 /// Describes the field shape of an enum variant.

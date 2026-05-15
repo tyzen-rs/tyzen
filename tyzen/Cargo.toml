@@ -1,14 +1,12 @@
 [package]
 name = "tyzen"
-version = "0.2.0"
+version = "0.1.10"
 description = "A lightweight tool to generate TypeScript type definitions from Rust structs and enums."
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tyzen-rs/tyzen"
 homepage = "https://github.com/tyzen-rs/tyzen"
 readme = "../README.md"
-keywords = ["tauri", "typescript", "codegen", "bindings", "serde"]
-categories = ["development-tools::ffi", "web-programming"]
 
 [features]
 default = []
