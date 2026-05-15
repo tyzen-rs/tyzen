@@ -5,18 +5,12 @@ use syn::{Data, DeriveInput, Field, parse_macro_input};
 mod attr;
 pub(crate) mod case;
 mod logic;
-mod metadata;
 
 use attr::{has_tyzen_optional, option_inner_type};
 use logic::structure_definition;
 
 pub fn derive_type(item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
-    let tyzen = attr::tyzen_attrs(&input.attrs);
-    let ns_val = match &tyzen.ns {
-        Some(s) => quote! { Some(#s) },
-        None => quote! { None },
-    };
 
     if let Some(error) = validate(&input) {
         return error.into_compile_error().into();
@@ -88,8 +82,6 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
                 name: #name_str,
                 generic_params: #generic_params_str,
                 structure: #structure,
-                module_path: module_path!(),
-                ns: #ns_val,
             }
         }
     }

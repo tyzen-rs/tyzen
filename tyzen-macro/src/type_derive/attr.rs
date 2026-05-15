@@ -96,65 +96,14 @@ pub fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
     serde
 }
 
-#[derive(Default)]
-pub struct TyzenAttrs {
-    pub optional: bool,
-    pub meta_name: Option<String>,
-    pub ns: Option<String>,
-    pub apply: Option<syn::Path>,
-    pub variant_meta: Vec<(String, String)>,
-}
-
-pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
-    let mut tyzen = TyzenAttrs::default();
-
-    for attr in attrs {
-        if !attr.path().is_ident("tyzen") {
-            continue;
-        }
-
-        // Handle both #[tyzen(optional)] and #[tyzen(key = "val")]
-        let _ = attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("optional") {
-                tyzen.optional = true;
-                return Ok(());
-            }
-
-            if meta.path.is_ident("meta") {
-                let value = meta.value()?.parse::<syn::LitStr>()?;
-                tyzen.meta_name = Some(value.value());
-                return Ok(());
-            }
-
-            if meta.path.is_ident("ns") || meta.path.is_ident("namespace") {
-                let value = meta.value()?.parse::<syn::LitStr>()?;
-                tyzen.ns = Some(value.value());
-                return Ok(());
-            }
-
-            if meta.path.is_ident("apply") {
-                let value = meta.value()?.parse::<syn::Path>()?;
-                tyzen.apply = Some(value);
-                return Ok(());
-            }
-
-            // Catch-all for variant metadata: #[tyzen(code = "404", msg = "Not Found")]
-            if let Some(ident) = meta.path.get_ident() {
-                let key = ident.to_string();
-                let value = meta.value()?.parse::<syn::LitStr>()?;
-                tyzen.variant_meta.push((key, value.value()));
-                return Ok(());
-            }
-
-            Ok(())
-        });
-    }
-
-    tyzen
-}
-
 pub fn has_tyzen_optional(attrs: &[Attribute]) -> bool {
-    tyzen_attrs(attrs).optional
+    attrs.iter().any(|attr| {
+        attr.path().is_ident("tyzen")
+            && attr
+                .parse_args::<syn::Ident>()
+                .map(|ident| ident == "optional")
+                .unwrap_or(false)
+    })
 }
 
 pub fn option_inner_type(ty: &Type) -> Option<&Type> {
