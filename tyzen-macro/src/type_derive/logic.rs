@@ -1,9 +1,20 @@
-use quote::quote;
-use syn::{Data, DeriveInput, Field, Fields};
-use super::attr::{SerdeAttrs, has_tyzen_optional, option_inner_type, serde_attrs};
+use super::attr::{SerdeAttrs, has_tyzen_optional, option_inner_type, serde_attrs, tyzen_attrs};
 use super::case::{RenameRule, apply_rename_rule};
+use super::metadata::{load_enum_metadata, save_enum_metadata};
+use quote::quote;
+use std::collections::HashMap;
+use syn::{Data, DeriveInput, Field, Fields};
 
-pub fn structure_definition(input: &DeriveInput, generic_params: &[String]) -> proc_macro2::TokenStream {
+/// Generates a `TypeStructure` metadata block for a given Rust type.
+/// 
+/// This is the entry point for metadata collection during `#[derive(Type)]`.
+/// It handles:
+/// - Structs (Named, Unnamed, Unit, and Transparent)
+/// - Enums (including Tagged/Untagged and Template inheritance)
+pub fn structure_definition(
+    input: &DeriveInput,
+    generic_params: &[String],
+) -> proc_macro2::TokenStream {
     let serde = serde_attrs(&input.attrs);
     match &input.data {
         Data::Struct(data) => {
@@ -22,7 +33,8 @@ pub fn structure_definition(input: &DeriveInput, generic_params: &[String]) -> p
             } else {
                 match &data.fields {
                     Fields::Named(_) => {
-                        let fields = struct_fields_meta(&data.fields, serde.rename_all, generic_params);
+                        let fields =
+                            struct_fields_meta(&data.fields, serde.rename_all, generic_params);
                         quote! {
                             || ::tyzen::meta::TypeStructure::Struct(::tyzen::meta::StructMeta {
                                 fields: &[#(#fields),*]
@@ -45,7 +57,14 @@ pub fn structure_definition(input: &DeriveInput, generic_params: &[String]) -> p
             }
         }
         Data::Enum(data) => {
-            let variants = enum_variants_meta(&data.variants, &serde, generic_params);
+            let tyzen = tyzen_attrs(&input.attrs);
+            let variants = enum_variants_meta(
+                &input.ident.to_string(),
+                &data.variants,
+                &serde,
+                &tyzen,
+                generic_params,
+            );
             let tag = serde.tag.as_deref();
             let tag_quote = match tag {
                 Some(t) => quote! { Some(#t) },
@@ -57,12 +76,18 @@ pub fn structure_definition(input: &DeriveInput, generic_params: &[String]) -> p
                 None => quote! { None },
             };
             let untagged = serde.untagged;
+            let meta_name = match tyzen.meta_name {
+                Some(m) => quote! { Some(#m) },
+                None => quote! { None },
+            };
+
             quote! {
                 || ::tyzen::meta::TypeStructure::Enum(::tyzen::meta::EnumMeta {
                     variants: &[#(#variants),*],
                     tag: #tag_quote,
                     content: #content_quote,
                     untagged: #untagged,
+                    meta_name: #meta_name,
                 })
             }
         }
@@ -70,6 +95,7 @@ pub fn structure_definition(input: &DeriveInput, generic_params: &[String]) -> p
     }
 }
 
+/// Collects metadata for all fields in a struct or variant.
 fn struct_fields_meta(
     fields: &Fields,
     rename_all: Option<RenameRule>,
@@ -81,17 +107,26 @@ fn struct_fields_meta(
         .collect()
 }
 
-fn field_meta(field: &Field, rename_all: Option<RenameRule>, generic_params: &[String]) -> Option<proc_macro2::TokenStream> {
+/// Extracts metadata for a single field, including Serde attributes and TypeScript type mapping.
+fn field_meta(
+    field: &Field,
+    rename_all: Option<RenameRule>,
+    generic_params: &[String],
+) -> Option<proc_macro2::TokenStream> {
     let serde = serde_attrs(&field.attrs);
     if serde.skip {
         return None;
     }
 
-    let field_name = field.ident.as_ref().map(|i| i.to_string()).unwrap_or_default();
+    let field_name = field
+        .ident
+        .as_ref()
+        .map(|i| i.to_string())
+        .unwrap_or_default();
     let renamed_name = ts_name(&field_name, serde.rename.clone(), rename_all);
     let optional = has_tyzen_optional(&field.attrs) || serde.default;
     let flattened = serde.flatten;
-    
+
     let ty = if has_tyzen_optional(&field.attrs) {
         option_inner_type(&field.ty).unwrap()
     } else {
@@ -100,18 +135,22 @@ fn field_meta(field: &Field, rename_all: Option<RenameRule>, generic_params: &[S
 
     let flatten_base_name = if flattened {
         let syn::Type::Path(p) = ty else {
-            return Some(syn::Error::new_spanned(
-                &field.ty,
-                "#[serde(flatten)] field must be a named type path",
-            )
-            .into_compile_error());
+            return Some(
+                syn::Error::new_spanned(
+                    &field.ty,
+                    "#[serde(flatten)] field must be a named type path",
+                )
+                .into_compile_error(),
+            );
         };
         let Some(last_seg) = p.path.segments.last() else {
-            return Some(syn::Error::new_spanned(
-                &field.ty,
-                "#[serde(flatten)] field has an empty type path",
-            )
-            .into_compile_error());
+            return Some(
+                syn::Error::new_spanned(
+                    &field.ty,
+                    "#[serde(flatten)] field has an empty type path",
+                )
+                .into_compile_error(),
+            );
         };
         let s = last_seg.ident.to_string();
         quote! { Some(#s) }
@@ -132,12 +171,43 @@ fn field_meta(field: &Field, rename_all: Option<RenameRule>, generic_params: &[S
     })
 }
 
+/// Collects metadata for enum variants, supporting inheritance from templates.
+/// 
+/// The merging priority is:
+/// 1. Attributes inherited from a template (via `#[tyzen(apply = TemplateName)]`)
+/// 2. Local variant overrides (via `#[tyzen(key = "value")]`)
+/// 
+/// After collection, the metadata is persisted to a shadow file to allow other enums
+/// in the same crate to use this enum as a template.
 fn enum_variants_meta(
+    enum_name: &str,
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::Token![,]>,
     container_serde: &SerdeAttrs,
+    container_tyzen: &super::attr::TyzenAttrs,
     generic_params: &[String],
 ) -> Vec<proc_macro2::TokenStream> {
-    variants
+    let mut collected_meta = Vec::new();
+
+    // Load template if specified
+    let template_meta = if let Some(apply_path) = &container_tyzen.apply {
+        let template_name = apply_path.segments.last().unwrap().ident.to_string();
+        match load_enum_metadata(&template_name) {
+            Some(meta) => Some(meta),
+            None => {
+                return vec![syn::Error::new_spanned(
+                    apply_path,
+                    format!(
+                        "Tyzen Template '{}' not found. Ensure it derives 'Type' in this crate before being applied.", 
+                        template_name
+                    )
+                ).into_compile_error()];
+            }
+        }
+    } else {
+        None
+    };
+
+    let tokens: Vec<_> = variants
         .iter()
         .filter_map(|variant| {
             let variant_serde = serde_attrs(&variant.attrs);
@@ -161,22 +231,56 @@ fn enum_variants_meta(
                     quote! { ::tyzen::meta::VariantFields::Unnamed(&[#(#types),*]) }
                 }
                 Fields::Named(_f) => {
-                    let field_rename_all = variant_serde.rename_all.or(container_serde.rename_all_fields);
-                    let fields = struct_fields_meta(&variant.fields, field_rename_all, generic_params);
+                    let field_rename_all = variant_serde
+                        .rename_all
+                        .or(container_serde.rename_all_fields);
+                    let fields =
+                        struct_fields_meta(&variant.fields, field_rename_all, generic_params);
                     quote! { ::tyzen::meta::VariantFields::Named(&[#(#fields),*]) }
                 }
             };
+
+            let tyzen = tyzen_attrs(&variant.attrs);
+            let mut final_attrs = HashMap::new();
+
+            // 1. Apply from template
+            if let Some(template) = &template_meta {
+                if let Some(v_meta) = template.get(&variant.ident.to_string()) {
+                    for (k, v) in v_meta {
+                        final_attrs.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+
+            // 2. Local overrides
+            for (k, v) in &tyzen.variant_meta {
+                final_attrs.insert(k.clone(), v.clone());
+            }
+
+            let attrs_vec: Vec<_> = final_attrs.into_iter().collect();
+            collected_meta.push((variant.ident.to_string(), attrs_vec.clone()));
+
+            let attrs_tokens = attrs_vec.iter().map(|(k, v)| {
+                quote! { (#k, #v) }
+            });
 
             Some(quote! {
                 ::tyzen::meta::VariantMeta {
                     name: #variant_name,
                     fields: #fields,
+                    attrs: &[#(#attrs_tokens),*],
                 }
             })
         })
-        .collect()
+        .collect();
+
+    // Save metadata for others to use
+    save_enum_metadata(enum_name, &collected_meta);
+
+    tokens
 }
 
+/// Applies renaming rules (Serde) to a name string.
 fn ts_name(name: &str, rename: Option<String>, rename_all: Option<RenameRule>) -> String {
     if let Some(rename) = rename {
         rename
@@ -187,6 +291,12 @@ fn ts_name(name: &str, rename: Option<String>, rename_all: Option<RenameRule>) -
     }
 }
 
+/// Resolves the TypeScript type name for a Rust type.
+/// 
+/// Handles:
+/// - Generic parameters (maps to their names as strings)
+/// - Common Rust types (Vec, Option, Result)
+/// - Custom types (calls their `TsType::ts_name()` implementation)
 fn ts_type_name(ty: &syn::Type, generic_params: &[String]) -> proc_macro2::TokenStream {
     if let Some(inner) = channel_inner_type(ty) {
         let inner_ts = ts_type_name(inner, generic_params);
@@ -200,6 +310,7 @@ fn ts_type_name(ty: &syn::Type, generic_params: &[String]) -> proc_macro2::Token
     }
 }
 
+/// Detects if a type is a `tauri::ipc::Channel` and extracts its inner type.
 fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     let syn::Type::Path(type_path) = ty else {
         return None;
@@ -220,6 +331,12 @@ fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     })
 }
 
+/// Attempts to resolve a type name while considering generic parameters.
+/// 
+/// This function specializes common Rust types to their TypeScript equivalents:
+/// - `Vec<T>` -> `T[]`
+/// - `Option<T>` -> `T | null`
+/// - `Result<T, E>` -> `Result<T, E>` (custom union)
 fn get_generic_aware_name(
     ty: &syn::Type,
     generic_params: &[String],
@@ -264,20 +381,18 @@ fn get_generic_aware_name(
                         let inner = &inner_names[0];
                         Some(quote! { format!("{} | null", #inner) })
                     }
-                    "Result" => {
-                        match inner_names.len() {
-                            1 => {
-                                let ok = &inner_names[0];
-                                Some(quote! { format!("Result<{}, string>", #ok) })
-                            }
-                            2 => {
-                                let ok = &inner_names[0];
-                                let err = &inner_names[1];
-                                Some(quote! { format!("Result<{}, {}>", #ok, #err) })
-                            }
-                            _ => None,
+                    "Result" => match inner_names.len() {
+                        1 => {
+                            let ok = &inner_names[0];
+                            Some(quote! { format!("Result<{}, string>", #ok) })
                         }
-                    }
+                        2 => {
+                            let ok = &inner_names[0];
+                            let err = &inner_names[1];
+                            Some(quote! { format!("Result<{}, {}>", #ok, #err) })
+                        }
+                        _ => None,
+                    },
                     _ => Some(
                         quote! { format!("{}<{}>", #ident_str, vec![#(#inner_names),*].join(", ")) },
                     ),
@@ -289,6 +404,8 @@ fn get_generic_aware_name(
     }
 }
 
+/// Recursively checks if a type or any of its generic arguments contain
+/// a parameter from the current generic scope.
 fn is_generic(ty: &syn::Type, generic_params: &[String]) -> bool {
     match ty {
         syn::Type::Path(p) => {

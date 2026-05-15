@@ -1,12 +1,14 @@
 [package]
 name = "tyzen-tauri"
-version = "0.1.10"
+version = "0.2.0"
 description = "Tauri integration for tyzen that automatically collects and registers all Tauri commands with a single macro."
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/tyzen-rs/tyzen"
 homepage = "https://github.com/tyzen-rs/tyzen"
 readme = "../README.md"
+keywords = ["tauri", "typescript", "codegen", "bindings", "ipc"]
+categories = ["development-tools::ffi", "web-programming"]
 
 [dependencies]
 tyzen = { version = "0.1.10", path = "../tyzen" }
