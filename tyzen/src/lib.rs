@@ -5,12 +5,95 @@ pub mod __private {
 }
 
 pub use tyzen_macro::{Event, Type, command, event, export};
+pub mod ts_type;
+
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Registers a default namespace for the current module and all its sub-modules.
+///
+/// Use this at the top of a module (usually `mod.rs`) to avoid setting `ns` on every item.
+///
+/// # Examples
+///
+/// ```rust
+/// tyzen::module_ns!("Task");
+/// ```
+#[macro_export]
+macro_rules! module_ns {
+    ($ns:expr) => {
+        ::tyzen::__private::inventory::submit! {
+            ::tyzen::ModuleNamespaceMeta {
+                path: module_path!(),
+                ns: $ns,
+            }
+        }
+    };
+}
+use crate::utils::snake_to_camel;
+
 pub mod meta;
 pub mod utils;
 
-use crate::utils::snake_to_camel;
+/// Groups all Tyzen metadata by their namespace for coordinated generation.
+#[derive(Default)]
+pub struct NamespaceMap<'a> {
+    pub types: BTreeMap<Option<&'a str>, Vec<&'a TypeMeta>>,
+    pub commands: BTreeMap<Option<&'a str>, Vec<&'a CommandMeta>>,
+    pub events: BTreeMap<Option<&'a str>, Vec<&'a EventMeta>>,
+    pub consts: BTreeMap<Option<&'a str>, Vec<&'a ConstMeta>>,
+    pub namespaces: BTreeSet<&'a str>,
+}
 
-pub mod ts_type;
+impl<'a> NamespaceMap<'a> {
+    pub fn collect() -> Self {
+        let mut map = Self::default();
+        
+        let mut module_ns: Vec<_> = inventory::iter::<ModuleNamespaceMeta>().collect();
+        // Sort by path length descending so more specific paths (longer) match first
+        module_ns.sort_by_key(|m| std::cmp::Reverse(m.path.len()));
+
+        let resolve_ns = |item_ns: Option<&'static str>, module_path: &'static str| -> Option<&'static str> {
+            if item_ns.is_some() {
+                return item_ns;
+            }
+            for reg in &module_ns {
+                if module_path.starts_with(reg.path) {
+                    return Some(reg.ns);
+                }
+            }
+            None
+        };
+
+        for m in inventory::iter::<TypeMeta>() {
+            let ns = resolve_ns(m.ns, m.module_path);
+            map.types.entry(ns).or_default().push(m);
+            if let Some(ns) = ns { map.namespaces.insert(ns); }
+        }
+        for m in inventory::iter::<CommandMeta>() {
+            let ns = resolve_ns(m.ns, m.module_path);
+            map.commands.entry(ns).or_default().push(m);
+            if let Some(ns) = ns { map.namespaces.insert(ns); }
+        }
+        for m in inventory::iter::<EventMeta>() {
+            let ns = resolve_ns(m.ns, m.module_path);
+            map.events.entry(ns).or_default().push(m);
+            if let Some(ns) = ns { map.namespaces.insert(ns); }
+        }
+        for m in inventory::iter::<ConstMeta>() {
+            let ns = resolve_ns(m.ns, m.module_path);
+            map.consts.entry(ns).or_default().push(m);
+            if let Some(ns) = ns { map.namespaces.insert(ns); }
+        }
+
+        // Sort everything for deterministic output
+        for v in map.types.values_mut() { v.sort_by_key(|m| m.name); }
+        for v in map.commands.values_mut() { v.sort_by_key(|m| m.name); }
+        for v in map.events.values_mut() { v.sort_by_key(|m| m.name); }
+        for v in map.consts.values_mut() { v.sort_by_key(|m| m.name); }
+
+        map
+    }
+}
 
 type TypeFactory = fn() -> String;
 
@@ -40,6 +123,12 @@ pub struct CommandMeta {
     pub params: &'static [ParamMeta],
     /// Returns the TypeScript return type for this command.
     pub return_type: TypeFactory,
+    /// The namespace this command belongs to.
+    pub ns: Option<&'static str>,
+    /// Optional rename for the command in the generated TypeScript.
+    pub rename: Option<&'static str>,
+    /// The Rust module path where this command is defined.
+    pub module_path: &'static str,
 }
 
 /// Metadata describing a Rust type registered for TypeScript generation.
@@ -52,6 +141,10 @@ pub struct TypeMeta {
     pub generic_params: &'static str,
     /// Returns the structural description of this type used for code generation.
     pub structure: fn() -> meta::TypeStructure,
+    /// The namespace this type belongs to.
+    pub ns: Option<&'static str>,
+    /// The Rust module path where this type is defined.
+    pub module_path: &'static str,
 }
 
 /// Metadata describing a typed event registered for TypeScript generation.
@@ -62,6 +155,10 @@ pub struct EventMeta {
     pub name: &'static str,
     /// Returns the TypeScript type name for the event payload.
     pub payload_type: fn() -> String,
+    /// The namespace this event belongs to.
+    pub ns: Option<&'static str>,
+    /// The Rust module path where this event is defined.
+    pub module_path: &'static str,
 }
 
 /// Metadata describing a constant exported to TypeScript.
@@ -73,7 +170,19 @@ pub struct ConstMeta {
     pub name: &'static str,
     /// The constant value as a string literal for direct embedding in TypeScript.
     pub value: &'static str,
+    /// The namespace this constant belongs to.
+    pub ns: Option<&'static str>,
+    /// The Rust module path where this constant is defined.
+    pub module_path: &'static str,
 }
+
+/// Metadata for registering a default namespace for a module path.
+pub struct ModuleNamespaceMeta {
+    pub path: &'static str,
+    pub ns: &'static str,
+}
+
+inventory::collect!(ModuleNamespaceMeta);
 
 /// Trait for types that have a TypeScript type name representation.
 ///
@@ -111,6 +220,30 @@ inventory::collect!(TypeMeta);
 inventory::collect!(EventMeta);
 inventory::collect!(ConstMeta);
 
+/// Controls how function names are automatically cleaned when in a namespace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NamingStrategy {
+    /// Strips the namespace prefix (e.g., `task_create` -> `create`).
+    Prefix,
+    /// Strips the namespace postfix (e.g., `create_task` -> `create`).
+    Postfix,
+}
+
+/// Configuration for the TypeScript generator.
+#[derive(Debug, Clone, Copy)]
+pub struct GeneratorConfig {
+    /// How to automatically rename functions in namespaces if no explicit rename is provided.
+    pub naming_strategy: NamingStrategy,
+}
+
+impl Default for GeneratorConfig {
+    fn default() -> Self {
+        Self {
+            naming_strategy: NamingStrategy::Prefix,
+        }
+    }
+}
+
 /// Generates TypeScript bindings for all registered types, commands, and constants.
 ///
 /// This is the primary entry point for non-Tauri projects. For Tauri projects,
@@ -133,8 +266,40 @@ inventory::collect!(ConstMeta);
 ///         .expect("failed to generate TypeScript bindings");
 /// }
 /// ```
+fn strip_naming(name: &str, ns: &str, is_type: bool, strategy: NamingStrategy) -> String {
+    if is_type {
+        let stripped = name.replace(ns, "");
+        if stripped.is_empty() {
+            return name.to_string();
+        }
+        return stripped;
+    }
+
+    let ns_norm = ns.to_lowercase();
+    let separator = "_";
+    
+    match strategy {
+        NamingStrategy::Prefix => {
+            let prefix = format!("{}{}", ns_norm, separator);
+            if name.starts_with(&prefix) && name.len() > prefix.len() {
+                name[prefix.len()..].to_string()
+            } else {
+                name.to_string()
+            }
+        }
+        NamingStrategy::Postfix => {
+            let postfix = format!("{}{}", separator, ns_norm);
+            if name.ends_with(&postfix) && name.len() > postfix.len() {
+                name[..name.len() - postfix.len()].to_string()
+            } else {
+                name.to_string()
+            }
+        }
+    }
+}
+
 pub fn generate(output_path: &str) -> std::io::Result<()> {
-    generate_full(output_path, write_command_declarations, |_| {})
+    generate_full(output_path, GeneratorConfig::default(), write_command_declarations, |_| {})
 }
 
 /// Generates TypeScript bindings with a custom command writer.
@@ -150,7 +315,7 @@ pub fn generate_with_commands(
     output_path: &str,
     write_commands: fn(&mut String),
 ) -> std::io::Result<()> {
-    generate_full(output_path, write_commands, |_| {})
+    generate_full(output_path, GeneratorConfig::default(), write_commands, |_| {})
 }
 
 /// Generates TypeScript bindings with full control over the output structure.
@@ -184,6 +349,7 @@ pub fn generate_with_commands(
 /// ```
 pub fn generate_full(
     output_path: &str,
+    config: GeneratorConfig,
     write_before_types: impl FnOnce(&mut String),
     write_after_types: impl FnOnce(&mut String),
 ) -> std::io::Result<()> {
@@ -195,28 +361,112 @@ pub fn generate_full(
         fs::create_dir_all(parent)?;
     }
 
+    let map = NamespaceMap::collect();
+    let all_types: Vec<&TypeMeta> = map.types.values().flatten().cloned().collect();
+
     let mut ts = String::new();
     ts.push_str("// auto-generated by tyzen, do not edit\n\n");
     write_before_types(&mut ts);
 
-    let mut constants: Vec<_> = inventory::iter::<ConstMeta>().collect();
-    constants.sort_by_key(|c| c.name);
-    if !constants.is_empty() {
-        ts.push_str("\n/** autogen constants **/\n");
-        for c in constants {
-            ts.push_str(&format!(
-                "export const {} = {} as const;\n",
-                c.name, c.value
-            ));
+    // 1. Global Types (for ergonomics)
+    ts.push_str("\n/** Global Types **/\n");
+    let mut sorted_all_types = all_types.clone();
+    sorted_all_types.sort_by_key(|t| t.name);
+    for t in sorted_all_types {
+        ts.push_str(&render_type(t, &all_types));
+        ts.push('\n');
+    }
+
+    if let Some(root_consts) = map.consts.get(&None) {
+        for c in root_consts {
+            ts.push_str(&format!("export const {} = {} as const;\n", c.name, c.value));
         }
     }
 
-    ts.push_str("\n/** autogen types **/\n");
-    let mut metas: Vec<&TypeMeta> = inventory::iter::<TypeMeta>().collect();
-    metas.sort_by_key(|m| m.name);
-    for t in &metas {
-        ts.push_str(&render_type(t, &metas));
-        ts.push('\n');
+    // 2. Namespaced Scopes
+    for ns in &map.namespaces {
+        ts.push_str(&format!("\n/** Namespace: {} **/\n", ns));
+
+        // 2a. Types within namespace (using stripped names)
+        if let Some(ns_types) = map.types.get(&Some(ns)) {
+            ts.push_str(&format!("export namespace {} {{\n", ns));
+            for t in ns_types {
+                let stripped_name = strip_naming(t.name, ns, true, config.naming_strategy);
+                // Avoid circular reference if stripping leaves the same name
+                if stripped_name != t.name {
+                   ts.push_str(&format!("  export type {} = {};\n", stripped_name, t.name));
+                }
+            }
+            ts.push_str("}\n");
+        }
+
+        // 2b. Merged Action Object (Commands, Events, Constants)
+        let ns_commands = map.commands.get(&Some(ns));
+        let ns_consts = map.consts.get(&Some(ns));
+        let ns_events = map.events.get(&Some(ns));
+
+        if ns_commands.is_some() || ns_consts.is_some() || ns_events.is_some() {
+            ts.push_str(&format!("export const {} = {{\n", ns));
+
+            if let Some(consts) = ns_consts {
+                for c in consts {
+                    ts.push_str(&format!("  {}: {} as const,\n", c.name, c.value));
+                }
+            }
+
+            if let Some(commands) = ns_commands {
+                for cmd in commands {
+                    let fn_name = cmd.rename.map(|r| r.to_string()).unwrap_or_else(|| {
+                        let base = strip_naming(cmd.name, ns, false, config.naming_strategy);
+                        snake_to_camel(&base)
+                    });
+                    let params: Vec<String> = cmd.params.iter().map(|p| format!("{}: {}", p.name, (p.ty)())).collect();
+                    ts.push_str(&format!("  {}: ({}) => __invoke<{}>(\"{}\", {{ {} }}),\n", 
+                        fn_name, 
+                        params.join(", "), 
+                        (cmd.return_type)(), 
+                        cmd.name,
+                        cmd.params.iter().map(|p| p.name).collect::<Vec<_>>().join(", ")
+                    ));
+                }
+            }
+
+            if let Some(events) = ns_events {
+                for ev in events {
+                    let camel_base = strip_naming(ev.name, ns, false, config.naming_strategy);
+                    let camel_name = snake_to_camel(camel_base.replace("-", "_").replace(":", "_").as_str());
+                    let ev_fn_name = format!("on{}{}", (&camel_name[0..1]).to_uppercase(), &camel_name[1..]);
+                    ts.push_str(&format!("  {}: (cb: (payload: {}) => void) => __listen(\"{}\", cb),\n", 
+                        ev_fn_name, (ev.payload_type)(), ev.name));
+                }
+            }
+
+            // Also include Enum Metadata if a type with the same name exists
+            if let Some(ns_types) = map.types.get(&Some(ns)) {
+                if let Some(matching_type) = ns_types.iter().find(|t| t.name == *ns) {
+                    if let meta::TypeStructure::Enum(e) = (matching_type.structure)() {
+                        if !e.variants.iter().all(|v| v.attrs.is_empty()) {
+                            ts.push_str("  Meta: {\n");
+                            for v in e.variants {
+                                let mut attrs = Vec::new();
+                                for (k, val) in v.attrs {
+                                    attrs.push(format!("{}: \"{}\"", snake_to_camel(k), val));
+                                }
+                                let attrs_str = attrs.join(", ");
+                                if attrs_str.is_empty() {
+                                    ts.push_str(&format!("    {}: {{}},\n", v.name));
+                                } else {
+                                    ts.push_str(&format!("    {}: {{ {} }},\n", v.name, attrs_str));
+                                }
+                            }
+                            ts.push_str("  } as const,\n");
+                        }
+                    }
+                }
+            }
+
+            ts.push_str("} as const;\n");
+        }
     }
 
     ts.push('\n');
@@ -270,7 +520,7 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
             }
         }
         meta::TypeStructure::Enum(e) => {
-            if !e.untagged
+            let enum_def = if !e.untagged
                 && e.variants
                     .iter()
                     .all(|v| matches!(v.fields, meta::VariantFields::Unit))
@@ -293,6 +543,12 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
                     .map(|v| render_variant(v, &e, all_metas))
                     .collect();
                 format!("export type {}{} = {}", meta.name, meta.generic_params, variants.join(" | "))
+            };
+
+            if let Some(meta_obj) = render_enum_meta(meta, &e) {
+                format!("{}\n\n{}", enum_def, meta_obj)
+            } else {
+                enum_def
             }
         }
         meta::TypeStructure::Transparent(inner) => {
@@ -302,6 +558,36 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
             format!("export type {} = null", meta.name)
         }
     }
+}
+
+pub fn render_enum_meta(type_meta: &TypeMeta, e: &meta::EnumMeta) -> Option<String> {
+    if e.variants.iter().all(|v| v.attrs.is_empty()) {
+        return None;
+    }
+
+    let meta_name = e.meta_name.unwrap_or_else(|| {
+        Box::leak(format!("{}Meta", type_meta.name).into_boxed_str())
+    });
+
+    let mut lines = Vec::new();
+    for v in e.variants {
+        let mut attrs = Vec::new();
+        for (k, v) in v.attrs {
+            attrs.push(format!("{}: \"{}\"", snake_to_camel(k), v));
+        }
+        let attrs_str = attrs.join(", ");
+        if attrs_str.is_empty() {
+            lines.push(format!("  {}: {{}}", v.name));
+        } else {
+            lines.push(format!("  {}: {{ {} }}", v.name, attrs_str));
+        }
+    }
+
+    Some(format!(
+        "export const {} = {{\n{}\n}} as const;",
+        meta_name,
+        lines.join(",\n")
+    ))
 }
 
 fn collect_fields_from_list(
