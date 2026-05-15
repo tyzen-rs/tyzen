@@ -101,6 +101,7 @@ pub struct TyzenAttrs {
     pub optional: bool,
     pub meta_name: Option<String>,
     pub ns: Option<String>,
+    pub apply: Option<syn::Path>,
     pub variant_meta: Vec<(String, String)>,
 }
 
@@ -128,6 +129,12 @@ pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
             if meta.path.is_ident("ns") || meta.path.is_ident("namespace") {
                 let value = meta.value()?.parse::<syn::LitStr>()?;
                 tyzen.ns = Some(value.value());
+                return Ok(());
+            }
+
+            if meta.path.is_ident("apply") {
+                let value = meta.value()?.parse::<syn::Path>()?;
+                tyzen.apply = Some(value);
                 return Ok(());
             }
 
