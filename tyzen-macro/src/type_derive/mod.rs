@@ -5,6 +5,7 @@ use syn::{Data, DeriveInput, Field, parse_macro_input};
 mod attr;
 pub(crate) mod case;
 mod logic;
+mod metadata;
 
 use attr::{has_tyzen_optional, option_inner_type};
 use logic::structure_definition;

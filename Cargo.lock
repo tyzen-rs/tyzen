@@ -3661,9 +3661,12 @@ dependencies = [
 name = "tyzen-macro"
 version = "0.1.10"
 dependencies = [
+ "once_cell",
  "proc-macro-error2",
  "proc-macro2",
  "quote",
+ "serde",
+ "serde_json",
  "syn 2.0.117",
 ]
 
