@@ -1,6 +1,6 @@
 [package]
 name = "tyzen"
-version = "0.1.10"
+version = "0.2.0"
 description = "A lightweight tool to generate TypeScript type definitions from Rust structs and enums."
 edition = "2024"
 license = "MIT OR Apache-2.0"

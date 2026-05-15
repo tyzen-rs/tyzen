@@ -2,16 +2,25 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, PatType, ReturnType, parse_macro_input};
 
+/// Entry point for the `#[tyzen::command]` attribute.
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr_parsed = parse_attr(attr);
     expand_command(item, false, attr_parsed)
 }
 
+/// Entry point for the `#[tyzen::tauri_command]` attribute.
 pub fn tauri_command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr_parsed = parse_attr(attr);
     expand_command(item, true, attr_parsed)
 }
 
+/// Main expansion logic for commands.
+/// 
+/// This function:
+/// 1. Parses the function signature.
+/// 2. Collects parameters, skipping Tauri framework types (State, AppHandle, etc.).
+/// 3. Registers command metadata with the `tyzen` inventory.
+/// 4. Optionally (if `emit_tauri` is true) generates a Tauri handler wrapper and submits it to `tyzen-tauri`.
 fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Option<String>)) -> TokenStream {
     let (ns, rename) = attr;
     let func = parse_macro_input!(item as ItemFn);
@@ -62,6 +71,9 @@ fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Op
     .into()
 }
 
+/// Filters function arguments to find those that should be exposed to TypeScript.
+/// 
+/// Skips `self` receivers and parameters that are internal to the Tauri framework.
 fn command_param(arg: &FnArg) -> Option<(&syn::Pat, &syn::Type)> {
     match arg {
         FnArg::Typed(PatType { pat, ty, .. }) if is_framework_param(ty) => None,
@@ -70,6 +82,10 @@ fn command_param(arg: &FnArg) -> Option<(&syn::Pat, &syn::Type)> {
     }
 }
 
+/// Determines if a type is a "framework parameter" that should be hidden from TypeScript.
+/// 
+/// Types like `State<T>`, `Window`, or `AppHandle` are injected by Tauri and should not
+/// appear in the generated frontend API.
 fn is_framework_param(ty: &syn::Type) -> bool {
     let syn::Type::Path(type_path) = ty else {
         return false;
@@ -83,6 +99,7 @@ fn is_framework_param(ty: &syn::Type) -> bool {
     )
 }
 
+/// Generates a TokenStream for the return type of a command.
 fn return_type_fn(output: &ReturnType) -> proc_macro2::TokenStream {
     match output {
         ReturnType::Default => quote! { <() as ::tyzen::TsType>::ts_name },
@@ -90,6 +107,7 @@ fn return_type_fn(output: &ReturnType) -> proc_macro2::TokenStream {
     }
 }
 
+/// Generates the code to submit a Tauri command handler to the inventory.
 fn tauri_handler_submission(
     emit_tauri: bool,
     fn_name_str: &str,
@@ -117,6 +135,7 @@ fn tauri_handler_submission(
     }
 }
 
+/// Detects if a type is a `tauri::ipc::Channel` and extracts its inner type.
 fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     let syn::Type::Path(type_path) = ty else {
         return None;
@@ -137,6 +156,7 @@ fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     })
 }
 
+/// Parses the attributes of the `command` macro (e.g. `ns`, `rename`).
 fn parse_attr(attr: TokenStream) -> (Option<String>, Option<String>) {
     if attr.is_empty() {
         return (None, None);
