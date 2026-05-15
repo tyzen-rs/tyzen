@@ -11,7 +11,7 @@ keywords = ["tauri", "typescript", "codegen", "bindings", "ipc"]
 categories = ["development-tools::ffi", "web-programming"]
 
 [dependencies]
-tyzen = { version = "0.1.10", path = "../tyzen" }
-tyzen-macro = { version = "0.1.10", path = "../tyzen-macro" }
+tyzen = { version = "0.2.0", path = "../tyzen" }
+tyzen-macro = { version = "0.2.0", path = "../tyzen-macro" }
 inventory = "0.3.24"
 tauri = "^2"
