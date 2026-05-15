@@ -3,18 +3,23 @@ use quote::quote;
 use syn::{FnArg, ItemFn, PatType, ReturnType, parse_macro_input};
 
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let ns = parse_ns(attr);
-    expand_command(item, false, ns)
+    let attr_parsed = parse_attr(attr);
+    expand_command(item, false, attr_parsed)
 }
 
 pub fn tauri_command(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let ns = parse_ns(attr);
-    expand_command(item, true, ns)
+    let attr_parsed = parse_attr(attr);
+    expand_command(item, true, attr_parsed)
 }
 
-fn expand_command(item: TokenStream, emit_tauri: bool, ns: Option<String>) -> TokenStream {
+fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Option<String>)) -> TokenStream {
+    let (ns, rename) = attr;
     let func = parse_macro_input!(item as ItemFn);
     let ns_val = match ns {
+        Some(s) => quote! { Some(#s) },
+        None => quote! { None },
+    };
+    let rename_val = match rename {
         Some(s) => quote! { Some(#s) },
         None => quote! { None },
     };
@@ -47,6 +52,8 @@ fn expand_command(item: TokenStream, emit_tauri: bool, ns: Option<String>) -> To
                 params: &[#(#params_ts),*],
                 return_type: #return_type_fn,
                 ns: #ns_val,
+                rename: #rename_val,
+                module_path: module_path!(),
             }
         }
 
@@ -130,16 +137,22 @@ fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     })
 }
 
-fn parse_ns(attr: TokenStream) -> Option<String> {
+fn parse_attr(attr: TokenStream) -> (Option<String>, Option<String>) {
     if attr.is_empty() {
-        return None;
+        return (None, None);
     }
 
     let mut ns = None;
+    let mut rename = None;
     let parser = syn::meta::parser(|meta| {
         if meta.path.is_ident("ns") || meta.path.is_ident("namespace") {
             let value = meta.value()?.parse::<syn::LitStr>()?;
             ns = Some(value.value());
+            return Ok(());
+        }
+        if meta.path.is_ident("rename") {
+            let value = meta.value()?.parse::<syn::LitStr>()?;
+            rename = Some(value.value());
             return Ok(());
         }
         Ok(())
@@ -148,5 +161,5 @@ fn parse_ns(attr: TokenStream) -> Option<String> {
     use syn::parse::Parser;
     let _ = parser.parse(attr);
 
-    ns
+    (ns, rename)
 }

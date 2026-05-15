@@ -6,7 +6,7 @@ pub mod __private {
 
 pub use tyzen_macro::tauri_command as command;
 
-use tyzen::{CommandMeta, EventMeta, __private::inventory, utils::snake_to_camel};
+use tyzen::{__private::inventory, utils::snake_to_camel};
 
 
 /// Metadata for a Tauri IPC handler registered via `#[tyzen_tauri::command]`.
@@ -18,7 +18,11 @@ pub struct HandlerMeta {
 inventory::collect!(HandlerMeta);
 
 pub fn generate(output_path: &str) -> std::io::Result<()> {
-    tyzen::generate_full(output_path, write_tauri_commands, write_tauri_events)
+    generate_with_config(output_path, tyzen::GeneratorConfig::default())
+}
+
+pub fn generate_with_config(output_path: &str, config: tyzen::GeneratorConfig) -> std::io::Result<()> {
+    tyzen::generate_full(output_path, config, write_tauri_commands, write_tauri_events)
 }
 
 pub fn write_tauri_commands(ts: &mut String) {
@@ -29,17 +33,18 @@ pub fn write_tauri_commands(ts: &mut String) {
     ts.push_str("import { listen, once, emit, type EventCallback } from \"@tauri-apps/api/event\"\n\n");
     
     ts.push_str(concat!(
-        "async function __invoke<T>(name: string, args: Record<string, any>): Promise<Result<T>> {\n",
+        "type InvokeResult<T> = T extends { status: \"ok\" } | { status: \"error\" } ? T : Result<T>;\n\n",
+        "async function __invoke<T>(name: string, args: Record<string, any>): Promise<InvokeResult<T>> {\n",
         "  try {\n",
         "    const finalArgs: Record<string, any> = {};\n",
         "    for (const [k, v] of Object.entries(args)) {\n",
         "       if (v instanceof Function) { /* logic for channel placeholder? */ }\n",
         "       finalArgs[k] = v;\n",
         "    }\n",
-        "    return { status: \"ok\", data: await invoke(name, args) };\n",
+        "    return { status: \"ok\", data: await invoke(name, args) } as InvokeResult<T>;\n",
         "  } catch (e) {\n",
         "    if (e instanceof Error) throw e;\n",
-        "    return { status: \"error\", error: e as any };\n",
+        "    return { status: \"error\", error: e as string } as InvokeResult<T>;\n",
         "  }\n",
         "}\n\n",
         "function __listen(name: string, cb: (payload: any) => void) {\n",
@@ -50,7 +55,7 @@ pub fn write_tauri_commands(ts: &mut String) {
     if let Some(root_commands) = map.commands.get(&None) {
         ts.push_str("export const commands = {\n");
         for cmd in root_commands {
-            let fn_name = snake_to_camel(cmd.name);
+            let fn_name = cmd.rename.map(|r| r.to_string()).unwrap_or_else(|| snake_to_camel(cmd.name));
             let params_ts: Vec<String> = cmd.params.iter().map(|p| format!("{}: {}", p.name, (p.ty)())).collect();
             ts.push_str(&format!("  {}: ({}) => __invoke<{}>(\"{}\", {{ {} }}),\n", 
                 fn_name, 
@@ -70,7 +75,8 @@ pub fn write_tauri_events(ts: &mut String) {
         ts.push_str("\n/** Global Events **/\n");
         ts.push_str("export const events = {\n");
         for ev in root_events {
-             let ev_fn_name = format!("on{}", snake_to_camel(ev.name).replace("-", "").replace(":", ""));
+             let camel_name = snake_to_camel(ev.name.replace("-", "_").replace(":", "_").as_str());
+             let ev_fn_name = format!("on{}{}", (&camel_name[0..1]).to_uppercase(), &camel_name[1..]);
              ts.push_str(&format!("  {}: (cb: (payload: {}) => void) => __listen(\"{}\", cb),\n", 
                 ev_fn_name, (ev.payload_type)(), ev.name));
         }

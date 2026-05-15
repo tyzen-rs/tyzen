@@ -85,6 +85,7 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
                 name: #name,
                 payload_type: <#struct_name #ty_generics as ::tyzen::TsType>::ts_name,
                 ns: #ns_val,
+                module_path: module_path!(),
             }
         }
     };

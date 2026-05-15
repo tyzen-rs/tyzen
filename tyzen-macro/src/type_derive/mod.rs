@@ -87,6 +87,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
                 name: #name_str,
                 generic_params: #generic_params_str,
                 structure: #structure,
+                module_path: module_path!(),
                 ns: #ns_val,
             }
         }

@@ -22,6 +22,7 @@ pub fn export(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 name: stringify!(#name),
                 value: #value_str,
                 ns: #ns_val,
+                module_path: module_path!(),
             }
         }
     };
