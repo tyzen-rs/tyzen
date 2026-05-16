@@ -5,3 +5,6 @@ target/
 *.bak
 
 .env.local
+brain/
+.agents/
+
