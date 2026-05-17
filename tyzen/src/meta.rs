@@ -51,6 +51,14 @@ pub struct FieldMeta {
     pub flattened: bool,
     /// The type name of the flattened struct, used to resolve its fields.
     pub flatten_base_name: Option<&'static str>,
+    /// Whether this field contains binary data that should be transformed to `Uint8Array`.
+    pub is_binary: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum AttrValue {
+    Str(&'static str),
+    List(&'static [&'static str]),
 }
 
 /// Metadata for a single enum variant.
@@ -62,7 +70,7 @@ pub struct VariantMeta {
     /// Arbitrary metadata attributes attached to this variant.
     ///
     /// Captured from `#[tyzen(key = "value")]`.
-    pub attrs: &'static [(&'static str, &'static str)],
+    pub attrs: &'static [(&'static str, AttrValue)],
 }
 
 /// Describes the field shape of an enum variant.

@@ -9,6 +9,7 @@ mod command_attr;
 mod event_attr;
 mod export_attr;
 mod type_derive;
+pub(crate) mod utils;
 
 /// Marks a function as a Tyzen command.
 /// 
@@ -16,7 +17,7 @@ mod type_derive;
 /// matching TypeScript bindings. It does NOT emit `#[tauri::command]`.
 /// 
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// #[tyzen::command(namespace = "auth")]
 /// fn login(username: String) -> Result<User, Error> { ... }
 /// ```
@@ -63,7 +64,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
 /// Useful for sharing configuration or magic numbers between the backend and frontend.
 /// 
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// #[tyzen::export]
 /// pub const MAX_RETRIES: u32 = 5;
 /// ```

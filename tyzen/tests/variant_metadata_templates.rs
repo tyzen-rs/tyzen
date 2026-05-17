@@ -25,12 +25,12 @@ fn test_metadata_inheritance() {
             found = true;
             if let tyzen::meta::TypeStructure::Enum(e) = (meta.structure)() {
                 let not_found = e.variants.iter().find(|v| v.name == "NotFound").expect("NotFound variant missing");
-                assert!(not_found.attrs.iter().any(|(k, v)| *k == "code" && *v == "404"));
-                assert!(not_found.attrs.iter().any(|(k, v)| *k == "msg" && *v == "Not Found"));
+                assert!(not_found.attrs.iter().any(|(k, v)| *k == "code" && *v == tyzen::meta::AttrValue::Str("404")));
+                assert!(not_found.attrs.iter().any(|(k, v)| *k == "msg" && *v == tyzen::meta::AttrValue::Str("Not Found")));
 
                 let internal = e.variants.iter().find(|v| v.name == "Internal").expect("Internal variant missing");
-                assert!(internal.attrs.iter().any(|(k, v)| *k == "code" && *v == "500"));
-                assert!(internal.attrs.iter().any(|(k, v)| *k == "msg" && *v == "Task busy"));
+                assert!(internal.attrs.iter().any(|(k, v)| *k == "code" && *v == tyzen::meta::AttrValue::Str("500")));
+                assert!(internal.attrs.iter().any(|(k, v)| *k == "msg" && *v == tyzen::meta::AttrValue::Str("Task busy")));
 
                 let unknown = e.variants.iter().find(|v| v.name == "Unknown").expect("Unknown variant missing");
                 assert!(unknown.attrs.is_empty(), "Unknown variant should have no attrs, found: {:?}", unknown.attrs);

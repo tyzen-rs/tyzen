@@ -1,6 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, PatType, ReturnType, parse_macro_input};
+use crate::utils::is_known_binary_type;
 
 /// Entry point for the `#[tyzen::command]` attribute.
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -21,8 +22,8 @@ pub fn tauri_command(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// 2. Collects parameters, skipping Tauri framework types (State, AppHandle, etc.).
 /// 3. Registers command metadata with the `tyzen` inventory.
 /// 4. Optionally (if `emit_tauri` is true) generates a Tauri handler wrapper and submits it to `tyzen-tauri`.
-fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Option<String>)) -> TokenStream {
-    let (ns, rename) = attr;
+fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Option<String>, bool)) -> TokenStream {
+    let (ns, rename, attr_binary) = attr;
     let func = parse_macro_input!(item as ItemFn);
     let ns_val = match ns {
         Some(s) => quote! { Some(#s) },
@@ -48,11 +49,23 @@ fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Op
             }
         })
         .collect();
+    let is_binary = match &sig.output {
+        ReturnType::Default => false,
+        ReturnType::Type(_, ty) => is_known_binary_type(ty) || attr_binary,
+    };
+
     let return_type_fn = return_type_fn(&sig.output);
     let handler_fn_name = quote::format_ident!("__tyzen_handler_{}", fn_name);
     let tauri_part = tauri_handler_submission(emit_tauri, &fn_name_str, &handler_fn_name, fn_name);
 
+    let maybe_tauri_attr = if emit_tauri {
+        quote! { #[tauri::command] }
+    } else {
+        quote! {}
+    };
+
     quote! {
+        #maybe_tauri_attr
         #func
 
         ::tyzen::__private::inventory::submit! {
@@ -63,6 +76,7 @@ fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Op
                 ns: #ns_val,
                 rename: #rename_val,
                 module_path: module_path!(),
+                is_binary: #is_binary,
             }
         }
 
@@ -157,13 +171,14 @@ fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
 }
 
 /// Parses the attributes of the `command` macro (e.g. `ns`, `rename`).
-fn parse_attr(attr: TokenStream) -> (Option<String>, Option<String>) {
+fn parse_attr(attr: TokenStream) -> (Option<String>, Option<String>, bool) {
     if attr.is_empty() {
-        return (None, None);
+        return (None, None, false);
     }
 
     let mut ns = None;
     let mut rename = None;
+    let mut binary = false;
     let parser = syn::meta::parser(|meta| {
         if meta.path.is_ident("ns") || meta.path.is_ident("namespace") {
             let value = meta.value()?.parse::<syn::LitStr>()?;
@@ -175,11 +190,15 @@ fn parse_attr(attr: TokenStream) -> (Option<String>, Option<String>) {
             rename = Some(value.value());
             return Ok(());
         }
+        if meta.path.is_ident("binary") {
+            binary = true;
+            return Ok(());
+        }
         Ok(())
     });
 
     use syn::parse::Parser;
     let _ = parser.parse(attr);
 
-    (ns, rename)
+    (ns, rename, binary)
 }
