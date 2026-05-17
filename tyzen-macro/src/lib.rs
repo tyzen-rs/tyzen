@@ -17,7 +17,7 @@ pub(crate) mod utils;
 /// matching TypeScript bindings. It does NOT emit `#[tauri::command]`.
 /// 
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// #[tyzen::command(namespace = "auth")]
 /// fn login(username: String) -> Result<User, Error> { ... }
 /// ```
@@ -64,7 +64,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
 /// Useful for sharing configuration or magic numbers between the backend and frontend.
 /// 
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// #[tyzen::export]
 /// pub const MAX_RETRIES: u32 = 5;
 /// ```

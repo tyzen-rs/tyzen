@@ -115,7 +115,7 @@ pub fn write_tauri_commands(ts: &mut String) {
         ts.push_str("export const commands = {\n");
         for cmd in root_commands {
             let fn_name = cmd.rename.map(|r| r.to_string()).unwrap_or_else(|| snake_to_camel(cmd.name));
-            let params_ts: Vec<String> = cmd.params.iter().map(|p| format!("{}: {}", p.name, (p.ty)())).collect();
+            let params_ts: Vec<String> = cmd.params.iter().map(|p| format!("{}: {}", clean_param_name(p.name), (p.ty)())).collect();
             let ret_ty = (cmd.return_type)();
             
             let mut transformer = "".to_string();
@@ -135,7 +135,7 @@ pub fn write_tauri_commands(ts: &mut String) {
                 params_ts.join(", "), 
                 ret_ty, 
                 cmd.name,
-                cmd.params.iter().map(|p| p.name).collect::<Vec<_>>().join(", "),
+                cmd.params.iter().map(|p| clean_param_name(p.name)).collect::<Vec<_>>().join(", "),
                 transformer
             ));
         }
@@ -171,7 +171,7 @@ pub fn write_tauri_events(ts: &mut String) {
 /// has a corresponding handler registered.
 /// 
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// tauri::Builder::default()
 ///     .invoke_handler(tyzen_tauri::handler!())
 ///     .run(tauri::generate_context!())
@@ -210,4 +210,12 @@ macro_rules! handler {
             false
         }
     }};
+}
+
+fn clean_param_name(name: &str) -> &str {
+    if name.starts_with('_') && name.len() > 1 {
+        &name[1..]
+    } else {
+        name
+    }
 }
