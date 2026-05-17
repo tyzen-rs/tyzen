@@ -7,7 +7,7 @@ pub(crate) mod case;
 mod logic;
 mod metadata;
 
-use attr::{has_tyzen_optional, option_inner_type, serde_attrs, tyzen_attrs};
+use attr::{has_tyzen_optional, option_inner_type, serde_attrs, tyzen_attrs, VariantMetaValue};
 use logic::structure_definition;
 use crate::utils::is_known_binary_type;
 
@@ -83,7 +83,33 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
         format!("<{}>", generic_params.join(", "))
     };
 
+    let mut validation_paths: Vec<syn::Path> = Vec::new();
+    if let Data::Enum(data) = &input.data {
+        for variant in &data.variants {
+            let v_tyzen = tyzen_attrs(&variant.attrs);
+            for (_, val) in &v_tyzen.variant_meta {
+                if let VariantMetaValue::List(paths) = val {
+                    for path in paths {
+                        validation_paths.push(path.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let validation_block = if !validation_paths.is_empty() {
+        quote! {
+            const _: () = {
+                #( let _ = #validation_paths; )*
+            };
+        }
+    } else {
+        quote! {}
+    };
+
     quote! {
+        #validation_block
+
         impl #impl_generics ::tyzen::TsType for #name #ty_generics #where_clause {
             fn ts_name() -> String {
                 #ts_name_impl

@@ -56,11 +56,7 @@ pub fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
                 format!("export type {}{} = {}", meta.name, meta.generic_params, variants.join(" | "))
             };
 
-            if let Some(meta_obj) = render_enum_meta(meta, &e) {
-                format!("{}\n\n{}", enum_def, meta_obj)
-            } else {
-                enum_def
-            }
+            enum_def
         }
         meta::TypeStructure::Transparent(inner) => {
             format!("export type {}{} = {}", meta.name, meta.generic_params, inner)
@@ -136,9 +132,26 @@ pub fn render_enum_meta(type_meta: &TypeMeta, e: &meta::EnumMeta) -> Option<Stri
 
     let mut lines = Vec::new();
     for v in e.variants {
-        let mut attrs: Vec<_> = v.attrs.iter().map(|(k, val)| (snake_to_camel(k), val)).collect();
+        let mut attrs: Vec<_> = v.attrs.iter().collect();
         attrs.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-        let attrs_str = attrs.iter().map(|(k, val)| format!("{}: \"{}\"", k, val)).collect::<Vec<_>>().join(", ");
+        
+        let mut attrs_str_parts = Vec::new();
+        for (k, val) in attrs {
+            let k_camel = snake_to_camel(k);
+            let val_rendered = match val {
+                meta::AttrValue::Str(s) => format!("\"{}\"", s),
+                meta::AttrValue::List(items) => {
+                    let ts_items: Vec<String> = items
+                        .iter()
+                        .map(|item| item.replace("::", "."))
+                        .collect();
+                    format!("[{}]", ts_items.join(", "))
+                }
+            };
+            attrs_str_parts.push(format!("{}: {}", k_camel, val_rendered));
+        }
+
+        let attrs_str = attrs_str_parts.join(", ");
         if attrs_str.is_empty() {
             lines.push(format!("  {}: {{}}", v.name));
         } else {

@@ -27,6 +27,22 @@ pub enum GenericMeta<T> {
     Value(T),
 }
 
+#[derive(Type)]
+pub enum TaskStatus {
+    Todo,
+    InProgress,
+    Done,
+    Canceled,
+}
+
+#[derive(Type)]
+pub enum ProjectStatus {
+    #[tyzen(task_statuses(TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done, TaskStatus::Canceled))]
+    Active,
+    #[tyzen(task_statuses(TaskStatus::Todo, TaskStatus::Canceled))]
+    OnHold,
+}
+
 #[test]
 fn variant_metadata_is_generated() {
     let output_path = "target/test-bindings/variant-metadata.ts";
@@ -47,4 +63,9 @@ fn variant_metadata_is_generated() {
     // 3. Generic Enums
     assert!(output.contains("export const GenericMetaMeta = {"));
     assert!(output.contains("Value: { label: \"Generic\" }"));
+
+    // 4. Type-safe Path Lists
+    assert!(output.contains("export const ProjectStatusMeta = {"));
+    assert!(output.contains("Active: { taskStatuses: [TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Done, TaskStatus.Canceled] }"));
+    assert!(output.contains("OnHold: { taskStatuses: [TaskStatus.Todo, TaskStatus.Canceled] }"));
 }

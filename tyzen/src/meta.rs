@@ -55,6 +55,12 @@ pub struct FieldMeta {
     pub is_binary: bool,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum AttrValue {
+    Str(&'static str),
+    List(&'static [&'static str]),
+}
+
 /// Metadata for a single enum variant.
 pub struct VariantMeta {
     /// The variant name as it will appear in TypeScript (after renaming).
@@ -64,7 +70,7 @@ pub struct VariantMeta {
     /// Arbitrary metadata attributes attached to this variant.
     ///
     /// Captured from `#[tyzen(key = "value")]`.
-    pub attrs: &'static [(&'static str, &'static str)],
+    pub attrs: &'static [(&'static str, AttrValue)],
 }
 
 /// Describes the field shape of an enum variant.

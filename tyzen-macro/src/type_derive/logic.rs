@@ -1,4 +1,4 @@
-use super::attr::{SerdeAttrs, option_inner_type, serde_attrs, tyzen_attrs};
+use super::attr::{SerdeAttrs, option_inner_type, serde_attrs, tyzen_attrs, VariantMetaValue};
 use super::case::{RenameRule, apply_rename_rule};
 use super::metadata::{load_enum_metadata, save_enum_metadata};
 use crate::utils::is_known_binary_type;
@@ -257,7 +257,7 @@ fn enum_variants_meta(
             if let Some(template) = &template_meta {
                 if let Some(v_meta) = template.get(&variant.ident.to_string()) {
                     for (k, v) in v_meta {
-                        final_attrs.insert(k.clone(), v.clone());
+                        final_attrs.insert(k.clone(), VariantMetaValue::Lit(v.clone()));
                     }
                 }
             }
@@ -267,11 +267,33 @@ fn enum_variants_meta(
                 final_attrs.insert(k.clone(), v.clone());
             }
 
-            let attrs_vec: Vec<_> = final_attrs.into_iter().collect();
-            collected_meta.push((variant.ident.to_string(), attrs_vec.clone()));
+            let mut collected_for_save = Vec::new();
+            for (k, v) in &final_attrs {
+                let serialized = match v {
+                    VariantMetaValue::Lit(s) => s.clone(),
+                    VariantMetaValue::List(paths) => {
+                        let path_strs: Vec<String> = paths.iter().map(|p| {
+                            quote!(#p).to_string().replace(" ", "")
+                        }).collect();
+                        path_strs.join(",")
+                    }
+                };
+                collected_for_save.push((k.clone(), serialized));
+            }
+            collected_meta.push((variant.ident.to_string(), collected_for_save));
 
-            let attrs_tokens = attrs_vec.iter().map(|(k, v)| {
-                quote! { (#k, #v) }
+            let attrs_tokens = final_attrs.iter().map(|(k, v)| {
+                match v {
+                    VariantMetaValue::Lit(s) => {
+                        quote! { (#k, ::tyzen::meta::AttrValue::Str(#s)) }
+                    }
+                    VariantMetaValue::List(paths) => {
+                        let path_strs: Vec<String> = paths.iter().map(|p| {
+                            quote!(#p).to_string().replace(" ", "")
+                        }).collect();
+                        quote! { (#k, ::tyzen::meta::AttrValue::List(&[#(#path_strs),*])) }
+                    }
+                }
             });
 
             Some(quote! {

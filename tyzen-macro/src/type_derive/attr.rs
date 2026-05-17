@@ -105,6 +105,27 @@ pub fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
     serde
 }
 
+#[derive(Clone)]
+pub enum VariantMetaValue {
+    Lit(String),
+    List(Vec<syn::Path>),
+}
+
+impl std::fmt::Debug for VariantMetaValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Lit(s) => f.debug_tuple("Lit").field(s).finish(),
+            Self::List(paths) => {
+                let path_strs: Vec<String> = paths.iter().map(|p| {
+                    use quote::ToTokens;
+                    p.to_token_stream().to_string().replace(" ", "")
+                }).collect();
+                f.debug_tuple("List").field(&path_strs).finish()
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct TyzenAttrs {
     pub optional: bool,
@@ -112,7 +133,7 @@ pub struct TyzenAttrs {
     pub meta_name: Option<String>,
     pub ns: Option<String>,
     pub apply: Option<syn::Path>,
-    pub variant_meta: Vec<(String, String)>,
+    pub variant_meta: Vec<(String, VariantMetaValue)>,
     pub binary: bool,
 }
 
@@ -162,9 +183,19 @@ pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
             // Catch-all for variant metadata: #[tyzen(code = "404", msg = "Not Found")]
             if let Some(ident) = meta.path.get_ident() {
                 let key = ident.to_string();
-                let value = meta.value()?.parse::<syn::LitStr>()?;
-                tyzen.variant_meta.push((key, value.value()));
-                return Ok(());
+                if meta.input.peek(syn::token::Paren) {
+                    let mut list = Vec::new();
+                    let _ = meta.parse_nested_meta(|nested| {
+                        list.push(nested.path.clone());
+                        Ok(())
+                    });
+                    tyzen.variant_meta.push((key, VariantMetaValue::List(list)));
+                    return Ok(());
+                } else {
+                    let value = meta.value()?.parse::<syn::LitStr>()?;
+                    tyzen.variant_meta.push((key, VariantMetaValue::Lit(value.value())));
+                    return Ok(());
+                }
             }
 
             Ok(())

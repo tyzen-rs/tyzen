@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use crate::meta;
 use crate::registry::{CommandMeta, NamespaceMap, TypeMeta};
-use crate::renderer::render_type;
+use crate::renderer::{render_type, render_enum_meta};
 use crate::utils::snake_to_camel;
 
 /// Controls how function names are automatically cleaned when in a namespace.
@@ -132,10 +132,24 @@ pub fn generate_full(
     // 1. Global Types (for ergonomics)
     ts.push_str("\n/** Global Types **/\n");
     let mut sorted_all_types = all_types.clone();
-    sorted_all_types.sort_by_key(|t| t.name);
-    for t in sorted_all_types {
+    sorted_all_types.sort_by_key(|t| {
+        let is_enum = matches!((t.structure)(), meta::TypeStructure::Enum(_));
+        (!is_enum, t.name)
+    });
+    for t in &sorted_all_types {
         ts.push_str(&render_type(t, &all_types));
         ts.push('\n');
+    }
+
+    // 1b. Enum Metadata (rendered after all type declarations so block-scoped references are safe)
+    ts.push_str("\n/** Enum Metadata **/\n");
+    for t in &sorted_all_types {
+        if let meta::TypeStructure::Enum(e) = (t.structure)() {
+            if let Some(meta_obj) = render_enum_meta(t, &e) {
+                ts.push_str(&meta_obj);
+                ts.push_str("\n\n");
+            }
+        }
     }
 
     if let Some(root_consts) = map.consts.get(&None) {
@@ -209,9 +223,26 @@ pub fn generate_full(
                         if !e.variants.iter().all(|v| v.attrs.is_empty()) {
                             ts.push_str("  Meta: {\n");
                             for v in e.variants {
-                                let mut attrs: Vec<_> = v.attrs.iter().map(|(k, val)| (snake_to_camel(k), val)).collect();
+                                let mut attrs: Vec<_> = v.attrs.iter().collect();
                                 attrs.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-                                let attrs_str = attrs.iter().map(|(k, val)| format!("{}: \"{}\"", k, val)).collect::<Vec<_>>().join(", ");
+                                
+                                let mut attrs_str_parts = Vec::new();
+                                for (k, val) in attrs {
+                                    let k_camel = snake_to_camel(k);
+                                    let val_rendered = match val {
+                                        meta::AttrValue::Str(s) => format!("\"{}\"", s),
+                                        meta::AttrValue::List(items) => {
+                                            let ts_items: Vec<String> = items
+                                                .iter()
+                                                .map(|item| item.replace("::", "."))
+                                                .collect();
+                                            format!("[{}]", ts_items.join(", "))
+                                        }
+                                    };
+                                    attrs_str_parts.push(format!("{}: {}", k_camel, val_rendered));
+                                }
+                                
+                                let attrs_str = attrs_str_parts.join(", ");
                                 if attrs_str.is_empty() {
                                     ts.push_str(&format!("    {}: {{}},\n", v.name));
                                 } else {

@@ -58,7 +58,14 @@ fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Op
     let handler_fn_name = quote::format_ident!("__tyzen_handler_{}", fn_name);
     let tauri_part = tauri_handler_submission(emit_tauri, &fn_name_str, &handler_fn_name, fn_name);
 
+    let maybe_tauri_attr = if emit_tauri {
+        quote! { #[tauri::command] }
+    } else {
+        quote! {}
+    };
+
     quote! {
+        #maybe_tauri_attr
         #func
 
         ::tyzen::__private::inventory::submit! {
