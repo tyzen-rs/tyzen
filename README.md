@@ -67,9 +67,10 @@ For Tauri projects, `tyzen-tauri` provides a wrapper that automates command regi
 
 ### 1. Define Tauri Commands
 
+No stacked macros needed! The `#[tyzen_tauri::command]` macro automatically expands and registers your commands with Tauri under the hood.
+
 ```rust
-#[tauri::command]
-#[tyzen_tauri::command] // Marks for TS generation & auto-registration
+#[tyzen_tauri::command] // Marks for TS generation & auto-registers with Tauri
 pub fn create_user(name: String) -> Result<User, String> {
     Ok(User { id: 1, name })
 }
@@ -130,9 +131,7 @@ function App() {
 Use `#[derive(tyzen::Type)]` on any Rust type. It supports primitives, `Vec`, `Option`, `HashMap`, and even complex **Generics**.
 
 ### Tauri Commands
-Tyzen requires both `#[tauri::command]` and `#[tyzen_tauri::command]` for clarity. 
-- `#[tauri::command]`: Tells Tauri this is an invocable command.
-- `#[tyzen_tauri::command]`: Tells Tyzen to generate TS metadata and include it in the `handler!()` macro.
+The `#[tyzen_tauri::command]` macro is the only attribute you need to declare a type-safe Tauri command. It automatically handles code generation and expands `#[tauri::command]` so there is zero boilerplate or stacked-macro footguns.
 
 ### Typed Events
 When you derive `tyzen::Event`, Tyzen adds a helper `.emit(&handle)` method to your struct:
@@ -148,14 +147,14 @@ event.emit(&handle).ok(); // Correctly types the payload for the frontend
 | Feature | Importance | Notes |
 | :--- | :--- | :--- |
 | **Full Serde Parity** | Implemented | `flatten`, `alias`, `default`, and `rename_all` support. Requires inter-type metadata. |
-| **Validation Sync** | Core | Bridge `validator` rules (Rust) directly into Zod schemas (TS). |
-| **Namespaces** | Implemented | Organize types and commands into logical Models (SDK style). |
-| **Zod Support** | Will implement | Generate Zod schemas alongside types for runtime frontend validation. |
-| **Result & Error** | Will implement | Deep support for custom Rust error types in command return signatures. |
+| **Binary Data** | Implemented | Automatically maps `Vec<u8>` or fields marked with `#[tyzen(binary)]` to `Uint8Array` with transparent hydration. |
+| **Result & Error** | Implemented | Deep support for custom Rust error types and enum variant metadata blocks in frontend. |
 | **Constant Export** | Implemented | Sync `pub const` logic values from Rust to TS. |
+| **Namespaces** | Implemented | Organize types and commands into logical Models (SDK style). |
+| **Validation Sync** | Core | Bridge `validator` rules (Rust) directly into Zod schemas (TS). |
+| **Zod Support** | Will implement | Generate Zod schemas alongside types for runtime frontend validation. |
 | **Mock Client** | Will implement | Generate mock JS/TS clients for testing/UI prototyping without the backend. |
 | **Doc Propagation** | | Transform Rust doc comments (`///`) into TSDoc (`/** ... */`). |
-| **Binary Data** | | Map `Vec<u8>` to `Uint8Array`/`ArrayBuffer` for optimized Tauri IPC. |
 
 ---
 

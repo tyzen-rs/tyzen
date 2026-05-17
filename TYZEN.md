@@ -9,7 +9,6 @@ pub struct User {
     pub name: String,
 }
 
-#[tauri::command]
 #[tyzen_tauri::command]
 pub fn get_user(id: u32) -> User {
     User { id, name: "Alice".into() }
@@ -52,7 +51,6 @@ pub struct Task {
 Mark your Tauri commands with `#[tyzen_tauri::command]`. This enables both TypeScript generation and automatic registration in the Tauri invoke handler.
 
 ```rust
-#[tauri::command]
 #[tyzen_tauri::command]
 pub async fn create_task(title: String) -> Result<Task, String> {
     Ok(Task { id: 1, title, is_completed: false })
@@ -164,7 +162,7 @@ const meta = TaskErrorMeta[errorVariant];
 ## ⚠️ Gotchas
 
 - **Return Types**: All Tauri commands are wrapped in a `Result<T, E>` in TypeScript to ensure consistent error handling. If your Rust function doesn't return a `Result`, Tyzen will wrap it in one.
-- **Explicit Attributes**: Both `#[tauri::command]` and `#[tyzen_tauri::command]` are required. This is intentional to keep the code explicit and avoid "magic" behavior that could conflict with other Tauri plugins.
+- **Single Attribute**: In v0.2.2+, you do not need to stack `#[tauri::command]` and `#[tyzen_tauri::command]`. The single `#[tyzen_tauri::command]` attribute handles the Tauri macro expansion automatically under the hood, eliminating duplicate code boilerplates!
 
 ## Keep this doc updated when:
 - New Serde attributes are supported.
