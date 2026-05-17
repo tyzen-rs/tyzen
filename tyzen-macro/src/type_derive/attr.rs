@@ -14,6 +14,7 @@ pub struct SerdeAttrs {
     pub flatten: bool,
     pub default: bool,
     pub alias: Vec<String>,
+    pub binary: bool,
 }
 
 pub fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
@@ -89,6 +90,14 @@ pub fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
                 return Ok(());
             }
 
+            if meta.path.is_ident("with") {
+                let value = meta.value()?.parse::<syn::LitStr>()?;
+                if value.value() == "serde_bytes" {
+                    serde.binary = true;
+                }
+                return Ok(());
+            }
+
             Ok(())
         });
     }
@@ -99,10 +108,12 @@ pub fn serde_attrs(attrs: &[Attribute]) -> SerdeAttrs {
 #[derive(Default)]
 pub struct TyzenAttrs {
     pub optional: bool,
+    pub nullable: bool,
     pub meta_name: Option<String>,
     pub ns: Option<String>,
     pub apply: Option<syn::Path>,
     pub variant_meta: Vec<(String, String)>,
+    pub binary: bool,
 }
 
 pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
@@ -117,6 +128,16 @@ pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
         let _ = attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("optional") {
                 tyzen.optional = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("nullable") {
+                tyzen.nullable = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("binary") {
+                tyzen.binary = true;
                 return Ok(());
             }
 

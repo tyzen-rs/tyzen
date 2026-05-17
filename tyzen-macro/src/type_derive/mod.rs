@@ -7,8 +7,9 @@ pub(crate) mod case;
 mod logic;
 mod metadata;
 
-use attr::{has_tyzen_optional, option_inner_type};
+use attr::{has_tyzen_optional, option_inner_type, serde_attrs, tyzen_attrs};
 use logic::structure_definition;
+use crate::utils::is_known_binary_type;
 
 pub fn derive_type(item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
@@ -36,6 +37,12 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
             }
         })
         .collect();
+
+    let has_binary = all_fields(&input).iter().any(|f| {
+        let tyzen = tyzen_attrs(&f.attrs);
+        let serde = serde_attrs(&f.attrs);
+        is_known_binary_type(&f.ty) || tyzen.binary || serde.binary
+    });
 
     let structure = structure_definition(&input, &generic_params);
 
@@ -90,6 +97,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
                 structure: #structure,
                 module_path: module_path!(),
                 ns: #ns_val,
+                has_binary: #has_binary,
             }
         }
     }

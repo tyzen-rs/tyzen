@@ -9,6 +9,7 @@ mod command_attr;
 mod event_attr;
 mod export_attr;
 mod type_derive;
+pub(crate) mod utils;
 
 /// Marks a function as a Tyzen command.
 /// 

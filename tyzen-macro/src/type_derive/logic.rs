@@ -1,12 +1,13 @@
-use super::attr::{SerdeAttrs, has_tyzen_optional, option_inner_type, serde_attrs, tyzen_attrs};
+use super::attr::{SerdeAttrs, option_inner_type, serde_attrs, tyzen_attrs};
 use super::case::{RenameRule, apply_rename_rule};
 use super::metadata::{load_enum_metadata, save_enum_metadata};
+use crate::utils::is_known_binary_type;
 use quote::quote;
 use std::collections::HashMap;
 use syn::{Data, DeriveInput, Field, Fields};
 
 /// Generates a `TypeStructure` metadata block for a given Rust type.
-/// 
+///
 /// This is the entry point for metadata collection during `#[derive(Type)]`.
 /// It handles:
 /// - Structs (Named, Unnamed, Unit, and Transparent)
@@ -18,6 +19,7 @@ pub fn structure_definition(
     let serde = serde_attrs(&input.attrs);
     match &input.data {
         Data::Struct(data) => {
+            let tyzen = tyzen_attrs(&input.attrs);
             if serde.transparent {
                 let Some(field) = data.fields.iter().next() else {
                     return syn::Error::new_spanned(
@@ -34,7 +36,7 @@ pub fn structure_definition(
                 match &data.fields {
                     Fields::Named(_) => {
                         let fields =
-                            struct_fields_meta(&data.fields, serde.rename_all, generic_params);
+                            struct_fields_meta(&data.fields, serde.rename_all, &tyzen, generic_params);
                         quote! {
                             || ::tyzen::meta::TypeStructure::Struct(::tyzen::meta::StructMeta {
                                 fields: &[#(#fields),*]
@@ -99,11 +101,12 @@ pub fn structure_definition(
 fn struct_fields_meta(
     fields: &Fields,
     rename_all: Option<RenameRule>,
+    container_tyzen: &super::attr::TyzenAttrs,
     generic_params: &[String],
 ) -> Vec<proc_macro2::TokenStream> {
     fields
         .iter()
-        .filter_map(|field| field_meta(field, rename_all, generic_params))
+        .filter_map(|field| field_meta(field, rename_all, container_tyzen, generic_params))
         .collect()
 }
 
@@ -111,12 +114,15 @@ fn struct_fields_meta(
 fn field_meta(
     field: &Field,
     rename_all: Option<RenameRule>,
+    container_tyzen: &super::attr::TyzenAttrs,
     generic_params: &[String],
 ) -> Option<proc_macro2::TokenStream> {
     let serde = serde_attrs(&field.attrs);
     if serde.skip {
         return None;
     }
+    
+    let is_option = option_inner_type(&field.ty).is_some();
 
     let field_name = field
         .ident
@@ -124,10 +130,13 @@ fn field_meta(
         .map(|i| i.to_string())
         .unwrap_or_default();
     let renamed_name = ts_name(&field_name, serde.rename.clone(), rename_all);
-    let optional = has_tyzen_optional(&field.attrs) || serde.default;
+    
+    let tyzen = tyzen_attrs(&field.attrs);
+    let optional = (tyzen.optional || (container_tyzen.optional && is_option) || serde.default) && !tyzen.nullable;
     let flattened = serde.flatten;
+    let is_binary = tyzen.binary || serde.binary || is_known_binary_type(&field.ty);
 
-    let ty = if has_tyzen_optional(&field.attrs) {
+    let ty = if optional && is_option {
         option_inner_type(&field.ty).unwrap()
     } else {
         &field.ty
@@ -167,16 +176,17 @@ fn field_meta(
             optional: #optional,
             flattened: #flattened,
             flatten_base_name: #flatten_base_name,
+            is_binary: #is_binary,
         }
     })
 }
 
 /// Collects metadata for enum variants, supporting inheritance from templates.
-/// 
+///
 /// The merging priority is:
 /// 1. Attributes inherited from a template (via `#[tyzen(apply = TemplateName)]`)
 /// 2. Local variant overrides (via `#[tyzen(key = "value")]`)
-/// 
+///
 /// After collection, the metadata is persisted to a shadow file to allow other enums
 /// in the same crate to use this enum as a template.
 fn enum_variants_meta(
@@ -221,6 +231,7 @@ fn enum_variants_meta(
                 container_serde.rename_all,
             );
 
+            let tyzen = tyzen_attrs(&variant.attrs);
             let fields = match &variant.fields {
                 Fields::Unit => quote! { ::tyzen::meta::VariantFields::Unit },
                 Fields::Unnamed(f) => {
@@ -235,12 +246,11 @@ fn enum_variants_meta(
                         .rename_all
                         .or(container_serde.rename_all_fields);
                     let fields =
-                        struct_fields_meta(&variant.fields, field_rename_all, generic_params);
+                        struct_fields_meta(&variant.fields, field_rename_all, &tyzen, generic_params);
                     quote! { ::tyzen::meta::VariantFields::Named(&[#(#fields),*]) }
                 }
             };
 
-            let tyzen = tyzen_attrs(&variant.attrs);
             let mut final_attrs = HashMap::new();
 
             // 1. Apply from template
@@ -292,7 +302,7 @@ fn ts_name(name: &str, rename: Option<String>, rename_all: Option<RenameRule>) -
 }
 
 /// Resolves the TypeScript type name for a Rust type.
-/// 
+///
 /// Handles:
 /// - Generic parameters (maps to their names as strings)
 /// - Common Rust types (Vec, Option, Result)
@@ -301,6 +311,10 @@ fn ts_type_name(ty: &syn::Type, generic_params: &[String]) -> proc_macro2::Token
     if let Some(inner) = channel_inner_type(ty) {
         let inner_ts = ts_type_name(inner, generic_params);
         return quote! { format!("Channel<{}>", #inner_ts) };
+    }
+
+    if is_known_binary_type(ty) {
+        return quote! { "Uint8Array".to_string() };
     }
 
     if let Some(name) = get_generic_aware_name(ty, generic_params) {
@@ -332,7 +346,7 @@ fn channel_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
 }
 
 /// Attempts to resolve a type name while considering generic parameters.
-/// 
+///
 /// This function specializes common Rust types to their TypeScript equivalents:
 /// - `Vec<T>` -> `T[]`
 /// - `Option<T>` -> `T | null`
@@ -429,5 +443,52 @@ fn is_generic(ty: &syn::Type, generic_params: &[String]) -> bool {
             })
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn test_field_optional_logic() {
+        let struct_tyzen_none = tyzen_attrs(&[]);
+        let struct_tyzen_opt = tyzen_attrs(&[parse_quote!(#[tyzen(optional)])]);
+
+        // 1. Option field, no struct-level optional -> required (null allowed)
+        let field_opt: syn::Field = parse_quote!(pub status: Option<String>);
+        let serde = serde_attrs(&field_opt.attrs);
+        let tyzen = tyzen_attrs(&field_opt.attrs);
+        let is_option = option_inner_type(&field_opt.ty).is_some();
+        let optional = tyzen.optional || (struct_tyzen_none.optional && is_option) || serde.default;
+        assert!(!optional);
+
+        // 2. Option field, WITH struct-level optional -> optional (?)
+        let optional = tyzen.optional || (struct_tyzen_opt.optional && is_option) || serde.default;
+        assert!(optional);
+
+        // 3. Non-option field, WITH struct-level optional -> still required
+        let field_req: syn::Field = parse_quote!(pub title: String);
+        let serde = serde_attrs(&field_req.attrs);
+        let tyzen = tyzen_attrs(&field_req.attrs);
+        let is_option = option_inner_type(&field_req.ty).is_some();
+        let optional = tyzen.optional || (struct_tyzen_opt.optional && is_option) || serde.default;
+        assert!(!optional);
+
+        // 4. Non-option field, with explicit field-level optional -> optional (logic level)
+        let field_req_opt: syn::Field = parse_quote!(#[tyzen(optional)] pub title: String);
+        let tyzen = tyzen_attrs(&field_req_opt.attrs);
+        let is_option = option_inner_type(&field_req_opt.ty).is_some();
+        let optional = tyzen.optional || (struct_tyzen_opt.optional && is_option) || serde.default;
+        assert!(optional);
+
+        // 5. Option field, WITH struct-level optional, BUT WITH field-level nullable -> required (T | null)
+        let field_nullable: syn::Field = parse_quote!(#[tyzen(nullable)] pub status: Option<String>);
+        let serde = serde_attrs(&field_nullable.attrs);
+        let tyzen = tyzen_attrs(&field_nullable.attrs);
+        let is_option = option_inner_type(&field_nullable.ty).is_some();
+        let optional = (tyzen.optional || (struct_tyzen_opt.optional && is_option) || serde.default) && !tyzen.nullable;
+        assert!(!optional);
     }
 }

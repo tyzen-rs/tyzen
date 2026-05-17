@@ -51,6 +51,8 @@ pub struct FieldMeta {
     pub flattened: bool,
     /// The type name of the flattened struct, used to resolve its fields.
     pub flatten_base_name: Option<&'static str>,
+    /// Whether this field contains binary data that should be transformed to `Uint8Array`.
+    pub is_binary: bool,
 }
 
 /// Metadata for a single enum variant.

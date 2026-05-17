@@ -129,6 +129,8 @@ pub struct CommandMeta {
     pub rename: Option<&'static str>,
     /// The Rust module path where this command is defined.
     pub module_path: &'static str,
+    /// Whether the return type is binary.
+    pub is_binary: bool,
 }
 
 /// Metadata describing a Rust type registered for TypeScript generation.
@@ -145,6 +147,8 @@ pub struct TypeMeta {
     pub ns: Option<&'static str>,
     /// The Rust module path where this type is defined.
     pub module_path: &'static str,
+    /// Whether this type or its children contain binary data.
+    pub has_binary: bool,
 }
 
 /// Metadata describing a typed event registered for TypeScript generation.
@@ -159,6 +163,8 @@ pub struct EventMeta {
     pub ns: Option<&'static str>,
     /// The Rust module path where this event is defined.
     pub module_path: &'static str,
+    /// Whether the payload type is binary.
+    pub is_binary: bool,
 }
 
 /// Metadata describing a constant exported to TypeScript.
@@ -493,7 +499,7 @@ pub fn generate_full(
 
 fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
     let structure = (meta.structure)();
-    match structure {
+    let def = match structure {
         meta::TypeStructure::Struct(s) => {
             let mut fields = Vec::new();
             collect_fields_from_list(s.fields, all_metas, &mut fields);
@@ -533,7 +539,7 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
                     .collect::<Vec<_>>()
                     .join(",\n");
                 format!(
-                    "export const {} = {{\n{}\n}} as const;\nexport type {}{} = (typeof {})[keyof typeof {}]",
+                    "export const {} = ELECT_UNTIL_TUPLES_READY || {{\n{}\n}} as const;\nexport type {}{} = (typeof {})[keyof typeof {}]",
                     meta.name, fields, meta.name, meta.generic_params, meta.name, meta.name
                 )
             } else {
@@ -544,6 +550,9 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
                     .collect();
                 format!("export type {}{} = {}", meta.name, meta.generic_params, variants.join(" | "))
             };
+
+            // Fix the ELECT_UNTIL_TUPLES_READY compilation string back to original
+            let enum_def = enum_def.replace("ELECT_UNTIL_TUPLES_READY || ", "");
 
             if let Some(meta_obj) = render_enum_meta(meta, &e) {
                 format!("{}\n\n{}", enum_def, meta_obj)
@@ -557,6 +566,60 @@ fn render_type(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> String {
         meta::TypeStructure::Unit => {
             format!("export type {} = null", meta.name)
         }
+    };
+
+    if let Some(transformer) = render_transformer(meta, all_metas) {
+        format!("{}\n{}", def, transformer)
+    } else {
+        def
+    }
+}
+
+#[allow(dead_code)]
+fn has_binary_data(structure: &meta::TypeStructure, all_metas: &[&TypeMeta]) -> bool {
+    match structure {
+        meta::TypeStructure::Struct(s) => {
+            let mut fields = Vec::new();
+            collect_fields_from_list(s.fields, all_metas, &mut fields);
+            fields.iter().any(|f| f.is_binary)
+        }
+        meta::TypeStructure::Enum(e) => {
+            e.variants.iter().any(|v| match &v.fields {
+                meta::VariantFields::Named(fields) => {
+                   let mut all_fields = Vec::new();
+                   collect_fields_from_list(fields, all_metas, &mut all_fields);
+                   all_fields.iter().any(|f| f.is_binary)
+                }
+                _ => false, // Tuple hydration deferred to v0.3.0
+            })
+        }
+        _ => false,
+    }
+}
+
+fn render_transformer(meta: &TypeMeta, all_metas: &[&TypeMeta]) -> Option<String> {
+    if !meta.has_binary {
+        return None;
+    }
+    let structure = (meta.structure)();
+
+    match structure {
+        meta::TypeStructure::Struct(s) => {
+            let mut fields = Vec::new();
+            collect_fields_from_list(s.fields, all_metas, &mut fields);
+            let binary_fields: Vec<_> = fields.iter().filter(|f| f.is_binary).collect();
+            
+            let mut transformations = Vec::new();
+            for f in binary_fields {
+                transformations.push(format!("  (res as any).{} = toBinary((res as any).{});", f.name, f.name));
+            }
+
+            Some(format!(
+                "export function to{}(res: {}): {} {{\n{}\n  return res;\n}}",
+                meta.name, meta.name, meta.name, transformations.join("\n")
+            ))
+        }
+        _ => None, // Enum transformer deferred
     }
 }
 
