@@ -107,6 +107,8 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
         quote! {}
     };
 
+    let schema_val = tyzen.schema;
+
     quote! {
         #validation_block
 
@@ -124,6 +126,7 @@ pub fn derive_type(item: TokenStream) -> TokenStream {
                 module_path: module_path!(),
                 ns: #ns_val,
                 has_binary: #has_binary,
+                schema: #schema_val,
             }
         }
     }

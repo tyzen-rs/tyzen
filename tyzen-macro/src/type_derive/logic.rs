@@ -169,6 +169,12 @@ fn field_meta(
 
     let ty_name = ts_type_name(ty, generic_params);
 
+    let validation = super::attr::parse_field_validation(&field.attrs);
+    let validation_quote = match validation {
+        Some(v) => quote! { #v },
+        None => quote! { None },
+    };
+
     Some(quote! {
         ::tyzen::meta::FieldMeta {
             name: #renamed_name,
@@ -177,6 +183,7 @@ fn field_meta(
             flattened: #flattened,
             flatten_base_name: #flatten_base_name,
             is_binary: #is_binary,
+            validation: #validation_quote,
         }
     })
 }

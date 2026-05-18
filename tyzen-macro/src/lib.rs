@@ -54,7 +54,7 @@ pub fn derive_event(item: TokenStream) -> TokenStream {
 /// 
 /// Supports both structs and enums. Correctly handles `serde` attributes
 /// and Tyzen-specific metadata like `#[tyzen(optional)]` or `#[tyzen(apply = Template)]`.
-#[proc_macro_derive(Type, attributes(tyzen, serde))]
+#[proc_macro_derive(Type, attributes(tyzen, serde, validate))]
 pub fn derive_type(item: TokenStream) -> TokenStream {
     type_derive::derive_type(item)
 }

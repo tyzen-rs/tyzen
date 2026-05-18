@@ -37,6 +37,17 @@ pub struct EnumMeta {
     pub meta_name: Option<&'static str>,
 }
 
+/// Validation rules mapped from Rust's `#[validate(...)]` attributes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ValidationRule {
+    pub min_length: Option<usize>,
+    pub max_length: Option<usize>,
+    pub regex_pattern: Option<&'static str>,
+    pub min_value: Option<f64>,
+    pub max_value: Option<f64>,
+    pub message: Option<&'static str>,
+}
+
 /// Metadata for a single struct or variant field.
 pub struct FieldMeta {
     /// The field name as it will appear in TypeScript (after renaming).
@@ -53,6 +64,8 @@ pub struct FieldMeta {
     pub flatten_base_name: Option<&'static str>,
     /// Whether this field contains binary data that should be transformed to `Uint8Array`.
     pub is_binary: bool,
+    /// Validation rules for this field.
+    pub validation: Option<ValidationRule>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

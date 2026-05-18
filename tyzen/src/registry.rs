@@ -55,6 +55,8 @@ pub struct TypeMeta {
     pub module_path: &'static str,
     /// Whether this type or its children contain binary data.
     pub has_binary: bool,
+    /// Whether Zod schema generation is enabled for this type.
+    pub schema: bool,
 }
 
 /// Metadata describing a typed event registered for TypeScript generation.
