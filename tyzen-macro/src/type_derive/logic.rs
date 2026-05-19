@@ -132,11 +132,12 @@ fn field_meta(
     let renamed_name = ts_name(&field_name, serde.rename.clone(), rename_all);
     
     let tyzen = tyzen_attrs(&field.attrs);
-    let optional = (tyzen.optional || (container_tyzen.optional && is_option) || serde.default) && !tyzen.nullable;
+    let nullable = tyzen.nullable;
+    let optional = tyzen.optional || (container_tyzen.optional && is_option) || serde.default;
     let flattened = serde.flatten;
     let is_binary = tyzen.binary || serde.binary || is_known_binary_type(&field.ty);
 
-    let ty = if optional && is_option {
+    let ty = if optional && is_option && !tyzen.nullable {
         option_inner_type(&field.ty).unwrap()
     } else {
         &field.ty
@@ -184,6 +185,7 @@ fn field_meta(
             flatten_base_name: #flatten_base_name,
             is_binary: #is_binary,
             validation: #validation_quote,
+            nullable: #nullable,
         }
     })
 }

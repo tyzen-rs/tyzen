@@ -18,9 +18,12 @@ pub use registry::{
     ModuleNamespaceMeta, NamespaceMap, TypeFactory,
 };
 pub use generator::{
-    NamingStrategy, GeneratorConfig, generate, generate_with_commands,
+    NamingStrategy, GeneratorConfig, Generator, generate, generate_with_commands,
     generate_full, write_command_declarations, strip_naming,
 };
+
+#[cfg(feature = "tauri")]
+pub use generator::generate_with_config;
 
 /// Trait for types that have a TypeScript type name representation.
 ///

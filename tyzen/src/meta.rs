@@ -66,6 +66,8 @@ pub struct FieldMeta {
     pub is_binary: bool,
     /// Validation rules for this field.
     pub validation: Option<ValidationRule>,
+    /// Whether this field has been explicitly marked as nullable.
+    pub nullable: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

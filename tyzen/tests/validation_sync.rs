@@ -69,6 +69,6 @@ fn validation_sync_generates_correct_zod_schemas() {
     // 4. ComplexUser schema matching with nested unit enums and optionals
     assert!(output.contains("export const complexUserSchema = z.object({"));
     assert!(output.contains("priority: z.enum([\"Low\", \"Medium\", \"High\"])"));
-    assert!(output.contains("target_date: z.string().nullable().optional()"));
+    assert!(output.contains("target_date: z.union([z.string(), z.date()]).nullable().optional()"));
     assert!(output.contains("description: z.string().optional()"));
 }
