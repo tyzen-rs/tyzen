@@ -125,7 +125,6 @@ pub fn generate_with_config(output_path: &str, config: GeneratorConfig) -> std::
     let path = std::path::Path::new(output_path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
-        fs::write(parent.join("helpers.ts"), TAURI_HELPERS)?;
     }
     generate_full(output_path, config, write_tauri_commands, |ts| {
         write_tauri_events_with_config(ts, config)
@@ -441,9 +440,10 @@ fn command_arg_expr(param: &ParamMeta) -> String {
 #[cfg(feature = "tauri")]
 pub const TAURI_HELPERS: &str = r#"import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
-import type { Result } from "./index"
 
-export type InvokeResult<T> = T extends { status: "ok" } | { status: "error" } ? T : Result<T>;
+export type InvokeResult<T> = T extends { status: "ok" } | { status: "error" }
+  ? T
+  : { status: "ok"; data: T } | { status: "error"; error: string };
 
 export async function __invoke<T>(name: string, args: Record<string, any>): Promise<InvokeResult<T>> {
   try {
@@ -506,7 +506,8 @@ pub fn write_tauri_commands(ts: &mut String) {
         .flatten()
         .any(|cmd| cmd.params.iter().any(|param| param.is_channel));
 
-    ts.push_str("import { __invoke, toBinary } from \"./helpers\"\n");
+    ts.push_str(TAURI_HELPERS);
+    ts.push_str("\n");
     if has_channels {
         ts.push_str("import { Channel } from \"@tauri-apps/api/core\"\n");
     }
@@ -573,8 +574,6 @@ pub fn write_tauri_events(ts: &mut String) {
 #[cfg(feature = "tauri")]
 pub fn write_tauri_events_with_config(ts: &mut String, _config: GeneratorConfig) {
     let map = NamespaceMap::collect();
-
-    ts.push_str("import { __listen } from \"./helpers\"\n");
 
     if let Some(root_events) = map.events.get(&None) {
         ts.push_str("\n/** Global Events **/\n");

@@ -427,8 +427,7 @@ export const ProjectErrorMeta = {
 Frontend handling (short pattern):
 
 ```ts
-import { parseError } from './bindings/helpers';
-import { ProjectErrorMeta } from './bindings';
+import { parseError, ProjectErrorMeta } from './bindings';
 
 const res = await commands.projectCreate(payload);
 if (res.status === 'error') {
