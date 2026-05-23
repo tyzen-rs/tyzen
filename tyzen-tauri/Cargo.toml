@@ -1,6 +1,6 @@
 [package]
 name = "tyzen-tauri"
-version = "0.2.2"
+version = "0.2.3"
 description = "Tauri integration for tyzen that automatically collects and registers all Tauri commands with a single macro."
 edition = "2024"
 license = "MIT OR Apache-2.0"
