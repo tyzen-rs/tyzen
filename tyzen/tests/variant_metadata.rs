@@ -37,7 +37,12 @@ pub enum TaskStatus {
 
 #[derive(Type)]
 pub enum ProjectStatus {
-    #[tyzen(task_statuses(TaskStatus::Todo, TaskStatus::InProgress, TaskStatus::Done, TaskStatus::Canceled))]
+    #[tyzen(task_statuses(
+        TaskStatus::Todo,
+        TaskStatus::InProgress,
+        TaskStatus::Done,
+        TaskStatus::Canceled
+    ))]
     Active,
     #[tyzen(task_statuses(TaskStatus::Todo, TaskStatus::Canceled))]
     OnHold,
@@ -47,7 +52,7 @@ pub enum ProjectStatus {
 fn variant_metadata_is_generated() {
     let output_path = "target/test-bindings/variant-metadata.ts";
     tyzen::generate(output_path).expect("generate should succeed");
-    
+
     let output = fs::read_to_string(output_path).unwrap();
 
     // 1. Basic Metadata

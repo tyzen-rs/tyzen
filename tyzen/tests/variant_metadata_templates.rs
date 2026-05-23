@@ -24,16 +24,42 @@ fn test_metadata_inheritance() {
         if meta.name == "TaskError" {
             found = true;
             if let tyzen::meta::TypeStructure::Enum(e) = (meta.structure)() {
-                let not_found = e.variants.iter().find(|v| v.name == "NotFound").expect("NotFound variant missing");
-                assert!(not_found.attrs.iter().any(|(k, v)| *k == "code" && *v == tyzen::meta::AttrValue::Str("404")));
+                let not_found = e
+                    .variants
+                    .iter()
+                    .find(|v| v.name == "NotFound")
+                    .expect("NotFound variant missing");
+                assert!(
+                    not_found
+                        .attrs
+                        .iter()
+                        .any(|(k, v)| *k == "code" && *v == tyzen::meta::AttrValue::Str("404"))
+                );
                 assert!(not_found.attrs.iter().any(|(k, v)| *k == "msg" && *v == tyzen::meta::AttrValue::Str("Not Found")));
 
-                let internal = e.variants.iter().find(|v| v.name == "Internal").expect("Internal variant missing");
-                assert!(internal.attrs.iter().any(|(k, v)| *k == "code" && *v == tyzen::meta::AttrValue::Str("500")));
+                let internal = e
+                    .variants
+                    .iter()
+                    .find(|v| v.name == "Internal")
+                    .expect("Internal variant missing");
+                assert!(
+                    internal
+                        .attrs
+                        .iter()
+                        .any(|(k, v)| *k == "code" && *v == tyzen::meta::AttrValue::Str("500"))
+                );
                 assert!(internal.attrs.iter().any(|(k, v)| *k == "msg" && *v == tyzen::meta::AttrValue::Str("Task busy")));
 
-                let unknown = e.variants.iter().find(|v| v.name == "Unknown").expect("Unknown variant missing");
-                assert!(unknown.attrs.is_empty(), "Unknown variant should have no attrs, found: {:?}", unknown.attrs);
+                let unknown = e
+                    .variants
+                    .iter()
+                    .find(|v| v.name == "Unknown")
+                    .expect("Unknown variant missing");
+                assert!(
+                    unknown.attrs.is_empty(),
+                    "Unknown variant should have no attrs, found: {:?}",
+                    unknown.attrs
+                );
             } else {
                 panic!("Expected Enum structure");
             }

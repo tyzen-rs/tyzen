@@ -1,5 +1,5 @@
-use syn::{Attribute, GenericArgument, PathArguments, Type};
 use super::case::{RenameRule, rename_rule};
+use syn::{Attribute, GenericArgument, PathArguments, Type};
 
 #[derive(Default)]
 pub struct SerdeAttrs {
@@ -116,10 +116,13 @@ impl std::fmt::Debug for VariantMetaValue {
         match self {
             Self::Lit(s) => f.debug_tuple("Lit").field(s).finish(),
             Self::List(paths) => {
-                let path_strs: Vec<String> = paths.iter().map(|p| {
-                    use quote::ToTokens;
-                    p.to_token_stream().to_string().replace(" ", "")
-                }).collect();
+                let path_strs: Vec<String> = paths
+                    .iter()
+                    .map(|p| {
+                        use quote::ToTokens;
+                        p.to_token_stream().to_string().replace(" ", "")
+                    })
+                    .collect();
                 f.debug_tuple("List").field(&path_strs).finish()
             }
         }
@@ -199,7 +202,9 @@ pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
                     return Ok(());
                 } else {
                     let value = meta.value()?.parse::<syn::LitStr>()?;
-                    tyzen.variant_meta.push((key, VariantMetaValue::Lit(value.value())));
+                    tyzen
+                        .variant_meta
+                        .push((key, VariantMetaValue::Lit(value.value())));
                     return Ok(());
                 }
             }
@@ -287,7 +292,11 @@ pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::T
                                 }
                             }
                             if pattern.is_none() {
-                                if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) = value_expr {
+                                if let syn::Expr::Lit(syn::ExprLit {
+                                    lit: syn::Lit::Str(s),
+                                    ..
+                                }) = value_expr
+                                {
                                     pattern = Some(s.value());
                                 }
                             }

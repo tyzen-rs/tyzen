@@ -1,5 +1,5 @@
-use tyzen::export;
 use std::fs;
+use tyzen::export;
 
 #[export]
 pub const VERSION: &str = "1.0.0";
@@ -16,7 +16,7 @@ fn test_const_export() {
     tyzen::generate(output_path).expect("generate should succeed");
 
     let content = fs::read_to_string(output_path).expect("failed to read output file");
-    
+
     assert!(content.contains("export const VERSION = \"1.0.0\" as const;"));
     assert!(content.contains("export const MAX_RETRIES = 5 as const;"));
     assert!(content.contains("export const IS_DEBUG = true as const;"));

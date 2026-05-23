@@ -7,9 +7,9 @@ pub(crate) mod case;
 mod logic;
 mod metadata;
 
-use attr::{has_tyzen_optional, option_inner_type, serde_attrs, tyzen_attrs, VariantMetaValue};
-use logic::structure_definition;
 use crate::utils::is_known_binary_type;
+use attr::{VariantMetaValue, has_tyzen_optional, option_inner_type, serde_attrs, tyzen_attrs};
+use logic::structure_definition;
 
 pub fn derive_type(item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);

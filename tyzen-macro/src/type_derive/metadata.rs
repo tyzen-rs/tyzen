@@ -1,14 +1,14 @@
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use once_cell::sync::Lazy;
-use serde::{Serialize, Deserialize};
 
 /// Global cache to avoid redundant file I/O during a single compilation session.
 /// Since proc-macros can be executed in parallel, this uses a Mutex for thread-safety.
 /// The structure is: EnumName -> VariantName -> AttributeKey -> AttributeValue.
-static METADATA_CACHE: Lazy<Mutex<HashMap<String, HashMap<String, HashMap<String, String>>>>> = 
+static METADATA_CACHE: Lazy<Mutex<HashMap<String, HashMap<String, HashMap<String, String>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Internal structure for JSON serialization of enum metadata.
@@ -41,7 +41,7 @@ pub fn save_enum_metadata(name: &str, variants: &[(String, Vec<(String, String)>
 
     let meta = EnumMetadata { variants: map };
     let path = get_metadata_path(name);
-    
+
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }

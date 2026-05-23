@@ -8,7 +8,7 @@ use tyzen::Type;
 struct GlobalOptionalCase {
     required_nullable: Option<String>,
     regular_string: String,
-    
+
     #[tyzen(nullable)]
     explicitly_nullable: Option<String>,
 }
@@ -23,7 +23,7 @@ fn global_optional_generator_option_works() {
         .expect("generate should succeed");
 
     let output = fs::read_to_string(output_path).unwrap();
-    
+
     // Check standard Option mapping when config is active
     assert!(output.contains("required_nullable?: string"));
     assert!(output.contains("regular_string: string"));

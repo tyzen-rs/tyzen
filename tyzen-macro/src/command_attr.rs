@@ -1,7 +1,7 @@
+use crate::utils::is_known_binary_type;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, PatType, ReturnType, parse_macro_input};
-use crate::utils::is_known_binary_type;
 
 /// Entry point for the `#[tyzen::command]` attribute.
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -16,13 +16,17 @@ pub fn tauri_command(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Main expansion logic for commands.
-/// 
+///
 /// This function:
 /// 1. Parses the function signature.
 /// 2. Collects parameters, skipping Tauri framework types (State, AppHandle, etc.).
 /// 3. Registers command metadata with the `tyzen` inventory.
 /// 4. Optionally (if `emit_tauri` is true) generates a Tauri handler wrapper and submits it to `tyzen-tauri`.
-fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Option<String>, bool)) -> TokenStream {
+fn expand_command(
+    item: TokenStream,
+    emit_tauri: bool,
+    attr: (Option<String>, Option<String>, bool),
+) -> TokenStream {
     let (ns, rename, attr_binary) = attr;
     let func = parse_macro_input!(item as ItemFn);
     let ns_val = match ns {
@@ -86,7 +90,7 @@ fn expand_command(item: TokenStream, emit_tauri: bool, attr: (Option<String>, Op
 }
 
 /// Filters function arguments to find those that should be exposed to TypeScript.
-/// 
+///
 /// Skips `self` receivers and parameters that are internal to the Tauri framework.
 fn command_param(arg: &FnArg) -> Option<(&syn::Pat, &syn::Type)> {
     match arg {
@@ -97,7 +101,7 @@ fn command_param(arg: &FnArg) -> Option<(&syn::Pat, &syn::Type)> {
 }
 
 /// Determines if a type is a "framework parameter" that should be hidden from TypeScript.
-/// 
+///
 /// Types like `State<T>`, `Window`, or `AppHandle` are injected by Tauri and should not
 /// appear in the generated frontend API.
 fn is_framework_param(ty: &syn::Type) -> bool {

@@ -1,5 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet};
 use crate::meta;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub type TypeFactory = fn() -> String;
 
@@ -16,6 +16,21 @@ pub struct ParamMeta {
     /// When `true`, the TypeScript wrapper accepts a callback `(payload: T) => void`
     /// instead of a value.
     pub is_channel: bool,
+}
+
+impl ParamMeta {
+    /// Returns the TypeScript type used by generated bindings for this parameter.
+    ///
+    /// Channels are exposed as callback parameters in TypeScript while keeping
+    /// the underlying Rust wire type available to the generator.
+    pub fn ts_type(&self) -> String {
+        let ty = (self.ty)();
+        if self.is_channel {
+            format!("(payload: {}) => void", ty)
+        } else {
+            ty
+        }
+    }
 }
 
 /// Metadata describing a command registered for TypeScript generation.
@@ -115,49 +130,66 @@ pub struct NamespaceMap<'a> {
 impl<'a> NamespaceMap<'a> {
     pub fn collect() -> Self {
         let mut map = Self::default();
-        
+
         let mut module_ns: Vec<_> = inventory::iter::<ModuleNamespaceMeta>().collect();
         // Sort by path length descending so more specific paths (longer) match first
         module_ns.sort_by_key(|m| std::cmp::Reverse(m.path.len()));
 
-        let resolve_ns = |item_ns: Option<&'static str>, module_path: &'static str| -> Option<&'static str> {
-            if item_ns.is_some() {
-                return item_ns;
-            }
-            for reg in &module_ns {
-                if module_path.starts_with(reg.path) {
-                    return Some(reg.ns);
+        let resolve_ns =
+            |item_ns: Option<&'static str>, module_path: &'static str| -> Option<&'static str> {
+                if item_ns.is_some() {
+                    return item_ns;
                 }
-            }
-            None
-        };
+                for reg in &module_ns {
+                    if module_path.starts_with(reg.path) {
+                        return Some(reg.ns);
+                    }
+                }
+                None
+            };
 
         for m in inventory::iter::<TypeMeta>() {
             let ns = resolve_ns(m.ns, m.module_path);
             map.types.entry(ns).or_default().push(m);
-            if let Some(ns) = ns { map.namespaces.insert(ns); }
+            if let Some(ns) = ns {
+                map.namespaces.insert(ns);
+            }
         }
         for m in inventory::iter::<CommandMeta>() {
             let ns = resolve_ns(m.ns, m.module_path);
             map.commands.entry(ns).or_default().push(m);
-            if let Some(ns) = ns { map.namespaces.insert(ns); }
+            if let Some(ns) = ns {
+                map.namespaces.insert(ns);
+            }
         }
         for m in inventory::iter::<EventMeta>() {
             let ns = resolve_ns(m.ns, m.module_path);
             map.events.entry(ns).or_default().push(m);
-            if let Some(ns) = ns { map.namespaces.insert(ns); }
+            if let Some(ns) = ns {
+                map.namespaces.insert(ns);
+            }
         }
         for m in inventory::iter::<ConstMeta>() {
             let ns = resolve_ns(m.ns, m.module_path);
             map.consts.entry(ns).or_default().push(m);
-            if let Some(ns) = ns { map.namespaces.insert(ns); }
+            if let Some(ns) = ns {
+                map.namespaces.insert(ns);
+            }
         }
 
         // Sort everything for deterministic output
-        for v in map.types.values_mut() { v.sort_by_key(|m| m.name); }
-        for v in map.commands.values_mut() { v.sort_by_key(|m| m.name); }
-        for v in map.events.values_mut() { v.sort_by_key(|m| m.name); }
-        for v in map.consts.values_mut() { v.sort_by_key(|m| m.name); }
+        for v in map.types.values_mut() {
+            v.sort_by_key(|m| m.name);
+        }
+        for v in map.commands.values_mut() {
+            v.sort_by_key(|m| m.name);
+        }
+        for v in map.events.values_mut() {
+            v.sort_by_key(|m| m.name);
+        }
+        for v in map.consts.values_mut() {
+            v.sort_by_key(|m| m.name);
+        }
 
         map
     }

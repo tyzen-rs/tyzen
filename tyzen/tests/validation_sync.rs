@@ -1,5 +1,4 @@
 #[allow(dead_code)]
-
 use std::fs;
 use tyzen::Type;
 
@@ -38,9 +37,9 @@ pub enum SimplePriority {
 #[tyzen(schema)]
 struct ComplexUser {
     pub priority: SimplePriority,
-    
+
     pub target_date: Option<String>,
-    
+
     #[tyzen(optional)]
     pub description: Option<String>,
 }
