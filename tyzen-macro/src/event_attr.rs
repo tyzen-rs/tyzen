@@ -6,7 +6,7 @@ use crate::type_derive::case::{RenameRule, apply_rename_rule};
 
 pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(item as DeriveInput);
-    
+
     let mut event_name = None;
     let mut ns = None;
 
@@ -42,11 +42,15 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
         apply_rename_rule(&s, RenameRule::KebabCase)
     });
 
-    input.attrs.push(syn::parse_quote! { #[tyzen(name = #name)] });
+    input
+        .attrs
+        .push(syn::parse_quote! { #[tyzen(name = #name)] });
     if let Some(ns) = ns {
         input.attrs.push(syn::parse_quote! { #[tyzen(ns = #ns)] });
     }
-    input.attrs.push(syn::parse_quote! { #[derive(::tyzen::Event)] });
+    input
+        .attrs
+        .push(syn::parse_quote! { #[derive(::tyzen::Event)] });
 
     quote! {
         #input

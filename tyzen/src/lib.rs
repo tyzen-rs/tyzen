@@ -5,22 +5,25 @@ pub mod __private {
 }
 
 pub use tyzen_macro::{Event, Type, command, event, export};
-pub mod ts_type;
+pub mod generator;
 pub mod meta;
 pub mod registry;
 pub mod renderer;
-pub mod generator;
+pub mod ts_type;
 pub mod utils;
 
 // Re-export items for backwards compatibility and external usage
-pub use registry::{
-    ParamMeta, CommandMeta, TypeMeta, EventMeta, ConstMeta,
-    ModuleNamespaceMeta, NamespaceMap, TypeFactory,
-};
 pub use generator::{
-    NamingStrategy, GeneratorConfig, generate, generate_with_commands,
-    generate_full, write_command_declarations, strip_naming,
+    Generator, GeneratorConfig, NamingStrategy, generate, generate_full, generate_with_commands,
+    strip_naming, write_command_declarations,
 };
+pub use registry::{
+    CommandMeta, ConstMeta, EventMeta, ModuleNamespaceMeta, NamespaceMap, ParamMeta, TypeFactory,
+    TypeMeta,
+};
+
+#[cfg(feature = "tauri")]
+pub use generator::generate_with_config;
 
 /// Trait for types that have a TypeScript type name representation.
 ///

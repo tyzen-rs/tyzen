@@ -1,6 +1,6 @@
 [package]
 name = "tyzen"
-version = "0.2.2"
+version = "0.2.3"
 description = "A lightweight tool to generate TypeScript type definitions from Rust structs and enums."
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -16,6 +16,7 @@ serde_json = ["dep:serde_json"]
 uuid = ["dep:uuid"]
 chrono = ["dep:chrono"]
 anyhow = ["dep:anyhow"]
+tauri = []
 
 [dependencies]
 inventory = "0.3.24"

@@ -17,6 +17,7 @@ pub struct Task {
 fn test_auto_naming_prefix() {
     let config = GeneratorConfig {
         naming_strategy: NamingStrategy::Prefix,
+        option_fields_as_optional: false,
     };
 
     // We can't easily call generate_full with a buffer here because it writes to a file.

@@ -1,5 +1,5 @@
-use syn::{Attribute, GenericArgument, PathArguments, Type};
 use super::case::{RenameRule, rename_rule};
+use syn::{Attribute, GenericArgument, PathArguments, Type};
 
 #[derive(Default)]
 pub struct SerdeAttrs {
@@ -116,10 +116,13 @@ impl std::fmt::Debug for VariantMetaValue {
         match self {
             Self::Lit(s) => f.debug_tuple("Lit").field(s).finish(),
             Self::List(paths) => {
-                let path_strs: Vec<String> = paths.iter().map(|p| {
-                    use quote::ToTokens;
-                    p.to_token_stream().to_string().replace(" ", "")
-                }).collect();
+                let path_strs: Vec<String> = paths
+                    .iter()
+                    .map(|p| {
+                        use quote::ToTokens;
+                        p.to_token_stream().to_string().replace(" ", "")
+                    })
+                    .collect();
                 f.debug_tuple("List").field(&path_strs).finish()
             }
         }
@@ -135,6 +138,7 @@ pub struct TyzenAttrs {
     pub apply: Option<syn::Path>,
     pub variant_meta: Vec<(String, VariantMetaValue)>,
     pub binary: bool,
+    pub schema: bool,
 }
 
 pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
@@ -159,6 +163,11 @@ pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
 
             if meta.path.is_ident("binary") {
                 tyzen.binary = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("schema") {
+                tyzen.schema = true;
                 return Ok(());
             }
 
@@ -193,7 +202,9 @@ pub fn tyzen_attrs(attrs: &[Attribute]) -> TyzenAttrs {
                     return Ok(());
                 } else {
                     let value = meta.value()?.parse::<syn::LitStr>()?;
-                    tyzen.variant_meta.push((key, VariantMetaValue::Lit(value.value())));
+                    tyzen
+                        .variant_meta
+                        .push((key, VariantMetaValue::Lit(value.value())));
                     return Ok(());
                 }
             }
@@ -227,4 +238,157 @@ pub fn option_inner_type(ty: &Type) -> Option<&Type> {
         GenericArgument::Type(inner) => Some(inner),
         _ => None,
     })
+}
+
+pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::TokenStream> {
+    let mut min_length = None;
+    let mut max_length = None;
+    let mut regex_pattern = None;
+    let mut min_value = None;
+    let mut max_value = None;
+    let mut message = None;
+    let mut has_any = false;
+
+    for attr in attrs {
+        if !attr.path().is_ident("validate") {
+            continue;
+        }
+
+        let _ = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("length") {
+                has_any = true;
+                let _ = meta.parse_nested_meta(|nested| {
+                    if nested.path.is_ident("min") {
+                        let value = nested.value()?.parse::<syn::LitInt>()?;
+                        min_length = Some(value.base10_parse::<usize>()?);
+                    } else if nested.path.is_ident("max") {
+                        let value = nested.value()?.parse::<syn::LitInt>()?;
+                        max_length = Some(value.base10_parse::<usize>()?);
+                    } else if nested.path.is_ident("message") {
+                        let value = nested.value()?.parse::<syn::LitStr>()?;
+                        message = Some(value.value());
+                    }
+                    Ok(())
+                });
+                return Ok(());
+            }
+
+            if meta.path.is_ident("regex") {
+                has_any = true;
+                if meta.input.peek(syn::token::Paren) {
+                    let _ = meta.parse_nested_meta(|nested| {
+                        if nested.path.is_ident("path") {
+                            let value_expr = nested.value()?.parse::<syn::Expr>()?;
+                            let mut pattern = None;
+                            if let syn::Expr::Unary(syn::ExprUnary { expr, .. }) = &value_expr {
+                                if let syn::Expr::Call(syn::ExprCall { func, .. }) = &**expr {
+                                    if let syn::Expr::Path(syn::ExprPath { path, .. }) = &**func {
+                                        if let Some(segment) = path.segments.last() {
+                                            if segment.ident == "re_code" {
+                                                pattern = Some("^[A-Z0-9]{2,5}$".to_string());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if pattern.is_none() {
+                                if let syn::Expr::Lit(syn::ExprLit {
+                                    lit: syn::Lit::Str(s),
+                                    ..
+                                }) = value_expr
+                                {
+                                    pattern = Some(s.value());
+                                }
+                            }
+                            regex_pattern = pattern;
+                        } else if nested.path.is_ident("message") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            message = Some(value.value());
+                        }
+                        Ok(())
+                    });
+                } else {
+                    let value = meta.value()?.parse::<syn::LitStr>()?;
+                    regex_pattern = Some(value.value());
+                }
+                return Ok(());
+            }
+
+            if meta.path.is_ident("range") {
+                has_any = true;
+                let _ = meta.parse_nested_meta(|nested| {
+                    if nested.path.is_ident("min") {
+                        let val_lit = nested.value()?.parse::<syn::Lit>()?;
+                        match val_lit {
+                            syn::Lit::Float(f) => {
+                                min_value = Some(f.base10_parse::<f64>()?);
+                            }
+                            syn::Lit::Int(i) => {
+                                min_value = Some(i.base10_parse::<i64>()? as f64);
+                            }
+                            _ => {}
+                        }
+                    } else if nested.path.is_ident("max") {
+                        let val_lit = nested.value()?.parse::<syn::Lit>()?;
+                        match val_lit {
+                            syn::Lit::Float(f) => {
+                                max_value = Some(f.base10_parse::<f64>()?);
+                            }
+                            syn::Lit::Int(i) => {
+                                max_value = Some(i.base10_parse::<i64>()? as f64);
+                            }
+                            _ => {}
+                        }
+                    } else if nested.path.is_ident("message") {
+                        let value = nested.value()?.parse::<syn::LitStr>()?;
+                        message = Some(value.value());
+                    }
+                    Ok(())
+                });
+                return Ok(());
+            }
+
+            Ok(())
+        });
+    }
+
+    if has_any {
+        let min_len_quote = match min_length {
+            Some(l) => quote::quote! { Some(#l) },
+            None => quote::quote! { None },
+        };
+        let max_len_quote = match max_length {
+            Some(l) => quote::quote! { Some(#l) },
+            None => quote::quote! { None },
+        };
+        let regex_quote = match regex_pattern {
+            Some(ref r) => quote::quote! { Some(#r) },
+            None => quote::quote! { None },
+        };
+        let min_val_quote = match min_value {
+            Some(v) => quote::quote! { Some(#v) },
+            None => quote::quote! { None },
+        };
+        let max_val_quote = match max_value {
+            Some(v) => quote::quote! { Some(#v) },
+            None => quote::quote! { None },
+        };
+        let msg_quote = match message {
+            Some(ref m) => quote::quote! { Some(#m) },
+            None => quote::quote! { None },
+        };
+
+        Some(quote::quote! {
+            Some(::tyzen::meta::ValidationRule {
+                min_length: #min_len_quote,
+                max_length: #max_len_quote,
+                regex_pattern: #regex_quote,
+                min_value: #min_val_quote,
+                max_value: #max_val_quote,
+                message: #msg_quote,
+            })
+        })
+    } else {
+        None
+    }
 }

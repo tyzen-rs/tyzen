@@ -3,7 +3,9 @@ use syn::{GenericArgument, PathArguments, Type};
 pub fn is_known_binary_type(ty: &Type) -> bool {
     match ty {
         Type::Path(p) => {
-            let Some(segment) = p.path.segments.last() else { return false; };
+            let Some(segment) = p.path.segments.last() else {
+                return false;
+            };
             let ident = segment.ident.to_string();
             if ident == "Vec" || ident == "VecDeque" || ident == "LinkedList" || ident == "Box" {
                 if let PathArguments::AngleBracketed(args) = &segment.arguments {

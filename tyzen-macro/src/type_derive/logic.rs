@@ -1,4 +1,4 @@
-use super::attr::{SerdeAttrs, option_inner_type, serde_attrs, tyzen_attrs, VariantMetaValue};
+use super::attr::{SerdeAttrs, VariantMetaValue, option_inner_type, serde_attrs, tyzen_attrs};
 use super::case::{RenameRule, apply_rename_rule};
 use super::metadata::{load_enum_metadata, save_enum_metadata};
 use crate::utils::is_known_binary_type;
@@ -35,8 +35,12 @@ pub fn structure_definition(
             } else {
                 match &data.fields {
                     Fields::Named(_) => {
-                        let fields =
-                            struct_fields_meta(&data.fields, serde.rename_all, &tyzen, generic_params);
+                        let fields = struct_fields_meta(
+                            &data.fields,
+                            serde.rename_all,
+                            &tyzen,
+                            generic_params,
+                        );
                         quote! {
                             || ::tyzen::meta::TypeStructure::Struct(::tyzen::meta::StructMeta {
                                 fields: &[#(#fields),*]
@@ -121,7 +125,7 @@ fn field_meta(
     if serde.skip {
         return None;
     }
-    
+
     let is_option = option_inner_type(&field.ty).is_some();
 
     let field_name = field
@@ -130,13 +134,14 @@ fn field_meta(
         .map(|i| i.to_string())
         .unwrap_or_default();
     let renamed_name = ts_name(&field_name, serde.rename.clone(), rename_all);
-    
+
     let tyzen = tyzen_attrs(&field.attrs);
-    let optional = (tyzen.optional || (container_tyzen.optional && is_option) || serde.default) && !tyzen.nullable;
+    let nullable = tyzen.nullable;
+    let optional = tyzen.optional || (container_tyzen.optional && is_option) || serde.default;
     let flattened = serde.flatten;
     let is_binary = tyzen.binary || serde.binary || is_known_binary_type(&field.ty);
 
-    let ty = if optional && is_option {
+    let ty = if optional && is_option && !tyzen.nullable {
         option_inner_type(&field.ty).unwrap()
     } else {
         &field.ty
@@ -169,6 +174,12 @@ fn field_meta(
 
     let ty_name = ts_type_name(ty, generic_params);
 
+    let validation = super::attr::parse_field_validation(&field.attrs);
+    let validation_quote = match validation {
+        Some(v) => quote! { #v },
+        None => quote! { None },
+    };
+
     Some(quote! {
         ::tyzen::meta::FieldMeta {
             name: #renamed_name,
@@ -177,6 +188,8 @@ fn field_meta(
             flattened: #flattened,
             flatten_base_name: #flatten_base_name,
             is_binary: #is_binary,
+            validation: #validation_quote,
+            nullable: #nullable,
         }
     })
 }
@@ -245,8 +258,12 @@ fn enum_variants_meta(
                     let field_rename_all = variant_serde
                         .rename_all
                         .or(container_serde.rename_all_fields);
-                    let fields =
-                        struct_fields_meta(&variant.fields, field_rename_all, &tyzen, generic_params);
+                    let fields = struct_fields_meta(
+                        &variant.fields,
+                        field_rename_all,
+                        &tyzen,
+                        generic_params,
+                    );
                     quote! { ::tyzen::meta::VariantFields::Named(&[#(#fields),*]) }
                 }
             };
@@ -272,9 +289,10 @@ fn enum_variants_meta(
                 let serialized = match v {
                     VariantMetaValue::Lit(s) => s.clone(),
                     VariantMetaValue::List(paths) => {
-                        let path_strs: Vec<String> = paths.iter().map(|p| {
-                            quote!(#p).to_string().replace(" ", "")
-                        }).collect();
+                        let path_strs: Vec<String> = paths
+                            .iter()
+                            .map(|p| quote!(#p).to_string().replace(" ", ""))
+                            .collect();
                         path_strs.join(",")
                     }
                 };
@@ -282,17 +300,16 @@ fn enum_variants_meta(
             }
             collected_meta.push((variant.ident.to_string(), collected_for_save));
 
-            let attrs_tokens = final_attrs.iter().map(|(k, v)| {
-                match v {
-                    VariantMetaValue::Lit(s) => {
-                        quote! { (#k, ::tyzen::meta::AttrValue::Str(#s)) }
-                    }
-                    VariantMetaValue::List(paths) => {
-                        let path_strs: Vec<String> = paths.iter().map(|p| {
-                            quote!(#p).to_string().replace(" ", "")
-                        }).collect();
-                        quote! { (#k, ::tyzen::meta::AttrValue::List(&[#(#path_strs),*])) }
-                    }
+            let attrs_tokens = final_attrs.iter().map(|(k, v)| match v {
+                VariantMetaValue::Lit(s) => {
+                    quote! { (#k, ::tyzen::meta::AttrValue::Str(#s)) }
+                }
+                VariantMetaValue::List(paths) => {
+                    let path_strs: Vec<String> = paths
+                        .iter()
+                        .map(|p| quote!(#p).to_string().replace(" ", ""))
+                        .collect();
+                    quote! { (#k, ::tyzen::meta::AttrValue::List(&[#(#path_strs),*])) }
                 }
             });
 
@@ -506,11 +523,14 @@ mod tests {
         assert!(optional);
 
         // 5. Option field, WITH struct-level optional, BUT WITH field-level nullable -> required (T | null)
-        let field_nullable: syn::Field = parse_quote!(#[tyzen(nullable)] pub status: Option<String>);
+        let field_nullable: syn::Field =
+            parse_quote!(#[tyzen(nullable)] pub status: Option<String>);
         let serde = serde_attrs(&field_nullable.attrs);
         let tyzen = tyzen_attrs(&field_nullable.attrs);
         let is_option = option_inner_type(&field_nullable.ty).is_some();
-        let optional = (tyzen.optional || (struct_tyzen_opt.optional && is_option) || serde.default) && !tyzen.nullable;
+        let optional =
+            (tyzen.optional || (struct_tyzen_opt.optional && is_option) || serde.default)
+                && !tyzen.nullable;
         assert!(!optional);
     }
 }
