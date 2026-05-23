@@ -1,6 +1,6 @@
 [package]
 name = "tyzen"
-version = "0.2.3"
+version = "0.2.4"
 description = "A lightweight tool to generate TypeScript type definitions from Rust structs and enums."
 edition = "2024"
 license = "MIT OR Apache-2.0"
@@ -20,7 +20,7 @@ tauri = []
 
 [dependencies]
 inventory = "0.3.24"
-tyzen-macro = { version = "0.2.2", path = "../tyzen-macro" }
+tyzen-macro = { version = "0.2.4", path = "../tyzen-macro" }
 serde_json = { version = "1", optional = true }
 uuid = { version = "1", optional = true }
 chrono = { version = "0.4", optional = true }
