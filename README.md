@@ -387,7 +387,44 @@ pub fn task_get_all() -> Vec<TaskItem> {
 
 ## Error Handling Pattern
 
-Keep backend errors typed, then map them to user-facing messages in frontend.
+Keep backend errors typed in Rust, then map them to short UI-friendly messages in frontend.
+
+Rust example:
+
+```rust
+#[derive(tyzen::Type, thiserror::Error, serde::Serialize)]
+pub enum ProjectError {
+    #[error("project title already exists")]
+    TitleExists,
+    #[error("project not found: {id}")]
+    NotFound { id: u64 },
+    #[error("db unavailable")]
+    DbUnavailable,
+}
+
+#[tyzen_tauri::command]
+pub fn project_create(title: String) -> Result<Project, ProjectError> {
+    // ...
+    # unimplemented!()
+}
+```
+
+Generated output shape (simplified):
+
+```ts
+export type ProjectError =
+  | { kind: 'TitleExists'; message: string }
+  | { kind: 'NotFound'; id: number; message: string }
+  | { kind: 'DbUnavailable'; message: string };
+
+export const ProjectErrorMeta = {
+  TitleExists: { code: 'TITLE_EXISTS' },
+  NotFound: { code: 'NOT_FOUND' },
+  DbUnavailable: { code: 'DB_UNAVAILABLE' },
+};
+```
+
+Frontend handling (short pattern):
 
 ```ts
 import { parseError } from './bindings/helpers';
@@ -396,7 +433,17 @@ import { ProjectErrorMeta } from './bindings';
 const res = await commands.projectCreate(payload);
 if (res.status === 'error') {
   const uiError = parseError(res.error, ProjectErrorMeta);
-  console.error(uiError.code, uiError.message);
+
+  switch (uiError.code) {
+    case 'TITLE_EXISTS':
+      toast.error('Title already exists');
+      break;
+    case 'NOT_FOUND':
+      toast.error('Project not found');
+      break;
+    default:
+      toast.error(uiError.message);
+  }
 }
 ```
 
