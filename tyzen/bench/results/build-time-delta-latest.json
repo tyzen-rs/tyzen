@@ -1,0 +1,13 @@
+{
+  "benchmark": "build-time-delta-check",
+  "warmup_runs": 1,
+  "measured_runs": 4,
+  "baseline_example": "cold_baseline",
+  "tyzen_example": "cold_generate_fixture",
+  "baseline_ms_median": 114.798,
+  "tyzen_ms_median": 112.245,
+  "delta_ms_median": -2.553,
+  "ratio_median": 0.978,
+  "baseline_samples_ms": [117.197459, 112.769917, 109.399792, 114.798333],
+  "tyzen_samples_ms": [112.245166, 108.466333, 108.22, 127.752208]
+}

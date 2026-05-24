@@ -1,0 +1,8 @@
+{
+  "warmup_runs": 3,
+  "measured_runs": 12,
+  "benchmark": "e2e-heavy-generate",
+  "total_ms_median": 5.993,
+  "total_ms_p95": 7.193,
+  "output_size_bytes": 542292
+}

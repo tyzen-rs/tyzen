@@ -1,0 +1,8 @@
+{
+  "benchmark": "cold-process-generate",
+  "warmup_runs": 1,
+  "measured_runs": 6,
+  "total_ms_median": 293.804,
+  "total_ms_p95": 961.796,
+  "samples_ms": [276.353792, 324.843208, 961.796125, 293.803625, 281.020458, 291.715167]
+}

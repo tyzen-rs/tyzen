@@ -1,0 +1,36 @@
+{
+  "warmup_runs": 5,
+  "measured_runs": 30,
+  "scenarios": [
+    {
+      "name": "small",
+      "type_count": 20,
+      "field_count": 10,
+      "metadata_build_ms_median": 0.003,
+      "render_only_ms_median": 0.065,
+      "render_only_ms_p95": 0.111,
+      "total_ms_median": 0.068,
+      "total_ms_p95": 0.116
+    },
+    {
+      "name": "medium",
+      "type_count": 200,
+      "field_count": 16,
+      "metadata_build_ms_median": 0.028,
+      "render_only_ms_median": 0.832,
+      "render_only_ms_p95": 1.107,
+      "total_ms_median": 0.858,
+      "total_ms_p95": 1.142
+    },
+    {
+      "name": "large",
+      "type_count": 1000,
+      "field_count": 24,
+      "metadata_build_ms_median": 0.076,
+      "render_only_ms_median": 3.332,
+      "render_only_ms_p95": 3.850,
+      "total_ms_median": 3.404,
+      "total_ms_p95": 3.939
+    }
+  ]
+}
