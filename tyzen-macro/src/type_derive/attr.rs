@@ -242,11 +242,25 @@ pub fn option_inner_type(ty: &Type) -> Option<&Type> {
 
 pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::TokenStream> {
     let mut min_length = None;
+    let mut min_length_message = None;
     let mut max_length = None;
+    let mut max_length_message = None;
     let mut regex_pattern = None;
+    let mut regex_message = None;
     let mut min_value = None;
+    let mut min_value_message = None;
     let mut max_value = None;
-    let mut message = None;
+    let mut max_value_message = None;
+    let mut has_email = false;
+    let mut email_message = None;
+    let mut has_url = false;
+    let mut url_message = None;
+    let mut contains = None;
+    let mut contains_message = None;
+    let mut does_not_contain = None;
+    let mut does_not_contain_message = None;
+    let mut custom_fn = None;
+    let mut custom_message = None;
     let mut has_any = false;
 
     for attr in attrs {
@@ -257,6 +271,7 @@ pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::T
         let _ = attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("length") {
                 has_any = true;
+                let mut len_msg = None;
                 let _ = meta.parse_nested_meta(|nested| {
                     if nested.path.is_ident("min") {
                         let value = nested.value()?.parse::<syn::LitInt>()?;
@@ -266,10 +281,14 @@ pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::T
                         max_length = Some(value.base10_parse::<usize>()?);
                     } else if nested.path.is_ident("message") {
                         let value = nested.value()?.parse::<syn::LitStr>()?;
-                        message = Some(value.value());
+                        len_msg = Some(value.value());
                     }
                     Ok(())
                 });
+                if len_msg.is_some() {
+                    min_length_message = len_msg.clone();
+                    max_length_message = len_msg;
+                }
                 return Ok(());
             }
 
@@ -303,7 +322,7 @@ pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::T
                             regex_pattern = pattern;
                         } else if nested.path.is_ident("message") {
                             let value = nested.value()?.parse::<syn::LitStr>()?;
-                            message = Some(value.value());
+                            regex_message = Some(value.value());
                         }
                         Ok(())
                     });
@@ -316,6 +335,7 @@ pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::T
 
             if meta.path.is_ident("range") {
                 has_any = true;
+                let mut range_msg = None;
                 let _ = meta.parse_nested_meta(|nested| {
                     if nested.path.is_ident("min") {
                         let val_lit = nested.value()?.parse::<syn::Lit>()?;
@@ -341,10 +361,104 @@ pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::T
                         }
                     } else if nested.path.is_ident("message") {
                         let value = nested.value()?.parse::<syn::LitStr>()?;
-                        message = Some(value.value());
+                        range_msg = Some(value.value());
                     }
                     Ok(())
                 });
+                if range_msg.is_some() {
+                    min_value_message = range_msg.clone();
+                    max_value_message = range_msg;
+                }
+                return Ok(());
+            }
+
+            if meta.path.is_ident("email") {
+                has_any = true;
+                has_email = true;
+                if meta.input.peek(syn::token::Paren) {
+                    let _ = meta.parse_nested_meta(|nested| {
+                        if nested.path.is_ident("message") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            email_message = Some(value.value());
+                        }
+                        Ok(())
+                    });
+                }
+                return Ok(());
+            }
+
+            if meta.path.is_ident("url") {
+                has_any = true;
+                has_url = true;
+                if meta.input.peek(syn::token::Paren) {
+                    let _ = meta.parse_nested_meta(|nested| {
+                        if nested.path.is_ident("message") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            url_message = Some(value.value());
+                        }
+                        Ok(())
+                    });
+                }
+                return Ok(());
+            }
+
+            if meta.path.is_ident("contains") {
+                has_any = true;
+                if meta.input.peek(syn::token::Paren) {
+                    let _ = meta.parse_nested_meta(|nested| {
+                        if nested.path.is_ident("pattern") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            contains = Some(value.value());
+                        } else if nested.path.is_ident("message") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            contains_message = Some(value.value());
+                        }
+                        Ok(())
+                    });
+                } else {
+                    let value = meta.value()?.parse::<syn::LitStr>()?;
+                    contains = Some(value.value());
+                }
+                return Ok(());
+            }
+
+            if meta.path.is_ident("does_not_contain") {
+                has_any = true;
+                if meta.input.peek(syn::token::Paren) {
+                    let _ = meta.parse_nested_meta(|nested| {
+                        if nested.path.is_ident("pattern") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            does_not_contain = Some(value.value());
+                        } else if nested.path.is_ident("message") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            does_not_contain_message = Some(value.value());
+                        }
+                        Ok(())
+                    });
+                } else {
+                    let value = meta.value()?.parse::<syn::LitStr>()?;
+                    does_not_contain = Some(value.value());
+                }
+                return Ok(());
+            }
+
+            if meta.path.is_ident("custom") {
+                has_any = true;
+                if meta.input.peek(syn::token::Paren) {
+                    let _ = meta.parse_nested_meta(|nested| {
+                        if nested.path.is_ident("function") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            custom_fn = Some(value.value());
+                        } else if nested.path.is_ident("message") {
+                            let value = nested.value()?.parse::<syn::LitStr>()?;
+                            custom_message = Some(value.value());
+                        }
+                        Ok(())
+                    });
+                } else {
+                    let value = meta.value()?.parse::<syn::LitStr>()?;
+                    custom_fn = Some(value.value());
+                }
                 return Ok(());
             }
 
@@ -357,23 +471,71 @@ pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::T
             Some(l) => quote::quote! { Some(#l) },
             None => quote::quote! { None },
         };
+        let min_len_msg_quote = match min_length_message {
+            Some(ref m) => quote::quote! { Some(#m) },
+            None => quote::quote! { None },
+        };
         let max_len_quote = match max_length {
             Some(l) => quote::quote! { Some(#l) },
+            None => quote::quote! { None },
+        };
+        let max_len_msg_quote = match max_length_message {
+            Some(ref m) => quote::quote! { Some(#m) },
             None => quote::quote! { None },
         };
         let regex_quote = match regex_pattern {
             Some(ref r) => quote::quote! { Some(#r) },
             None => quote::quote! { None },
         };
+        let regex_msg_quote = match regex_message {
+            Some(ref m) => quote::quote! { Some(#m) },
+            None => quote::quote! { None },
+        };
         let min_val_quote = match min_value {
             Some(v) => quote::quote! { Some(#v) },
+            None => quote::quote! { None },
+        };
+        let min_val_msg_quote = match min_value_message {
+            Some(ref m) => quote::quote! { Some(#m) },
             None => quote::quote! { None },
         };
         let max_val_quote = match max_value {
             Some(v) => quote::quote! { Some(#v) },
             None => quote::quote! { None },
         };
-        let msg_quote = match message {
+        let max_val_msg_quote = match max_value_message {
+            Some(ref m) => quote::quote! { Some(#m) },
+            None => quote::quote! { None },
+        };
+        let email_msg_quote = match email_message {
+            Some(ref m) => quote::quote! { Some(#m) },
+            None => quote::quote! { None },
+        };
+        let url_msg_quote = match url_message {
+            Some(ref m) => quote::quote! { Some(#m) },
+            None => quote::quote! { None },
+        };
+        let contains_quote = match contains {
+            Some(ref c) => quote::quote! { Some(#c) },
+            None => quote::quote! { None },
+        };
+        let contains_msg_quote = match contains_message {
+            Some(ref m) => quote::quote! { Some(#m) },
+            None => quote::quote! { None },
+        };
+        let does_not_contain_quote = match does_not_contain {
+            Some(ref c) => quote::quote! { Some(#c) },
+            None => quote::quote! { None },
+        };
+        let does_not_contain_msg_quote = match does_not_contain_message {
+            Some(ref m) => quote::quote! { Some(#m) },
+            None => quote::quote! { None },
+        };
+        let custom_fn_quote = match custom_fn {
+            Some(ref f) => quote::quote! { Some(#f) },
+            None => quote::quote! { None },
+        };
+        let custom_msg_quote = match custom_message {
             Some(ref m) => quote::quote! { Some(#m) },
             None => quote::quote! { None },
         };
@@ -381,11 +543,25 @@ pub fn parse_field_validation(attrs: &[syn::Attribute]) -> Option<proc_macro2::T
         Some(quote::quote! {
             Some(::tyzen::meta::ValidationRule {
                 min_length: #min_len_quote,
+                min_length_message: #min_len_msg_quote,
                 max_length: #max_len_quote,
+                max_length_message: #max_len_msg_quote,
                 regex_pattern: #regex_quote,
+                regex_message: #regex_msg_quote,
                 min_value: #min_val_quote,
+                min_value_message: #min_val_msg_quote,
                 max_value: #max_val_quote,
-                message: #msg_quote,
+                max_value_message: #max_val_msg_quote,
+                email: #has_email,
+                email_message: #email_msg_quote,
+                url: #has_url,
+                url_message: #url_msg_quote,
+                contains: #contains_quote,
+                contains_message: #contains_msg_quote,
+                does_not_contain: #does_not_contain_quote,
+                does_not_contain_message: #does_not_contain_msg_quote,
+                custom_fn: #custom_fn_quote,
+                custom_message: #custom_msg_quote,
             })
         })
     } else {

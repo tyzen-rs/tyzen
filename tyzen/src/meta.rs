@@ -41,11 +41,30 @@ pub struct EnumMeta {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ValidationRule {
     pub min_length: Option<usize>,
+    pub min_length_message: Option<&'static str>,
     pub max_length: Option<usize>,
+    pub max_length_message: Option<&'static str>,
     pub regex_pattern: Option<&'static str>,
+    pub regex_message: Option<&'static str>,
     pub min_value: Option<f64>,
+    pub min_value_message: Option<&'static str>,
     pub max_value: Option<f64>,
-    pub message: Option<&'static str>,
+    pub max_value_message: Option<&'static str>,
+    /// Whether `#[validate(email)]` is present — maps to `.email()`.
+    pub email: bool,
+    pub email_message: Option<&'static str>,
+    /// Whether `#[validate(url)]` is present — maps to `.url()`.
+    pub url: bool,
+    pub url_message: Option<&'static str>,
+    /// Pattern from `#[validate(contains = "...")]` — maps to `.includes("...")`.
+    pub contains: Option<&'static str>,
+    pub contains_message: Option<&'static str>,
+    /// Pattern from `#[validate(does_not_contain = "...")]` — maps to `.refine(v => !v.includes(...))`.
+    pub does_not_contain: Option<&'static str>,
+    pub does_not_contain_message: Option<&'static str>,
+    /// Name of custom validation function from `#[validate(custom = "...")]`
+    pub custom_fn: Option<&'static str>,
+    pub custom_message: Option<&'static str>,
 }
 
 /// Metadata for a single struct or variant field.
