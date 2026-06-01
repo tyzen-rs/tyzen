@@ -528,7 +528,7 @@ event.emit(&handle).ok(); // Correctly types the payload for the frontend
 | **Result & Error**    | Implemented    | Deep support for custom Rust error types and enum variant metadata blocks in frontend.                            |
 | **Constant Export**   | Implemented    | Sync `pub const` logic values from Rust to TS.                                                                    |
 | **Namespaces**        | Implemented    | Organize types and commands into logical Models (SDK style).                                                      |
-| **Zod Support**       | Partial        | Generate Zod schemas alongside types for runtime frontend validation.                                             |
+| **Zod Support**       | Implemented    | Generate Zod schemas alongside types for runtime frontend validation.                                             |
 | **Mock Client**       | Will implement | Generate mock JS/TS clients for testing/UI prototyping without the backend.                                       |
 | **Doc Propagation**   |                | Transform Rust doc comments (`///`) into TSDoc (`/** ... */`).                                                    |
 
